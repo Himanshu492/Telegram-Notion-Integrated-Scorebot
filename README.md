@@ -1,6 +1,6 @@
 <div align="center">
 
-# Silver Lining ✨
+# Silver Lining ✨v
 
 > A Telegram scoreboard bot for daily puzzle games, friendly rivalry, and the ritual of sending your score before midnight.
 
@@ -274,3 +274,14 @@ Daily winners, weekly winners, and movies use the property names referenced in `
 Because daily puzzle games are more fun when they become a tiny shared ritual.
 
 This bot keeps the boring parts tidy: who submitted, who forgot, who won the day, who won the week, and who gets to pick the movie. The rest stays where it belongs: in the group chat, with the screenshots, the excuses, and the occasional suspiciously fast solves.
+
+---
+
+## 👋 Author
+
+Made by **Himanshu Sharma**.
+
+
+If you want to chat about the project, puzzle bots, automation, or anything I am building next, connect with me here:
+
+- [LinkedIn](https://www.linkedin.com/in/himanshusharma492/)
