@@ -1,6 +1,6 @@
 <div align="center">
 
-# Silver Lining ✨v
+# Silver Lining ✨
 
 > A Telegram scoreboard bot for daily puzzle games, friendly rivalry, and the ritual of sending your score before midnight.
 
