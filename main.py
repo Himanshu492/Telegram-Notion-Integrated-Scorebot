@@ -401,10 +401,10 @@ def update_handler(update):
                         unqueue_movie = check_oldest_queued()
                         change_queued_status(unqueue_movie, "Not Queued")
                     
-                if check_movie_database(movie):
-                    change_queued_status(movie, "Queued")
+                if check_movie_database(title):
+                    change_queued_status(title, "Queued")
                 else:
-                    add_video_page_to_movies(movie, title, image, user_name, queued="Queued")
+                    add_video_page_to_movies(movie, image, title, user_name, queued="Queued")
 
                 send_message(chat_id, message_thread_id=message_thread_id, reply_to_message_id=message_id, text="Video Queued!")
                 del pending[key]
