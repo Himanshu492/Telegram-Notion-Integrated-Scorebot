@@ -157,12 +157,15 @@ def add_page_to_movies(movie, person, queued="Not Queued"):
     }
 
     try:
-        response = requests.post(url, headers=headers, data=json.dumps(new_page)).json()
+        response = requests.post(url, headers=headers, data=json.dumps(new_page))
+        response.raise_for_status()
+        response_data = response.json()
     except Exception as e:
         print(f"Error adding page to movies database: {e}")
         return None
-    
-    return response["id"]
+
+    # Only treat the insert as successful when Notion returns a page id.
+    return response_data.get("id")
 
 
 def check_movie_database(movie_name):
@@ -178,11 +181,13 @@ def check_movie_database(movie_name):
     }
 
     try:
-        response = requests.post(url, headers=headers, json=payload).json()
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        response_data = response.json()
     except Exception as e:
         print(f"Error checking movie database: {e}")
         return False
-    results = response.get("results", [])
+    results = response_data.get("results", [])
     return len(results) > 0
 
 
@@ -198,11 +203,13 @@ def check_no_queued():
     }
 
     try:
-        response = requests.post(url, headers=headers, json=payload).json()
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        response_data = response.json()
     except Exception as e:
         print(f"Error checking queued movies: {e}")
         return 0
-    results = response.get("results", [])
+    results = response_data.get("results", [])
     return len(results)
 
 
@@ -224,11 +231,13 @@ def check_oldest_queued():
         "page_size": 1
     }
     try:
-        response = requests.post(url, headers=headers, json=payload).json()
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        response_data = response.json()
     except Exception as e:
         print(f"Error checking oldest queued movie: {e}")
         return None
-    results = response.get("results", [])
+    results = response_data.get("results", [])
     if results:
         return results[0]["properties"]["Movie"]["title"][0]["text"]["content"]
     return None
@@ -246,12 +255,14 @@ def change_queued_status(movie_name, new_status):
     }
 
     try:
-        response = requests.post(url, headers=headers, json=payload).json()
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        response_data = response.json()
     except Exception as e:
         print(f"Error checking movie database: {e}")
-        return
+        return False
 
-    results = response.get("results", [])
+    results = response_data.get("results", [])
     if results:
         page_id = results[0]["id"]
         update_url = f"{PAGES_END_POINT}{page_id}"
@@ -261,9 +272,13 @@ def change_queued_status(movie_name, new_status):
             }
         }
         try:
-            requests.patch(update_url, headers=headers, json=updated_page)
+            response = requests.patch(update_url, headers=headers, json=updated_page)
+            response.raise_for_status()
+            return True
         except Exception as e:
             print(f"Error updating movie status: {e}")
+            return False
+    return False
 
 
 def check_current_winner():
@@ -379,9 +394,12 @@ def add_video_page_to_movies(url, image, title, person, queued="Not Queued"):
     }
 
     try:
-        response = requests.post(PAGES_END_POINT, headers=headers, data=json.dumps(video_page)).json()
-        return response["id"]
+        response = requests.post(PAGES_END_POINT, headers=headers, data=json.dumps(video_page))
+        response.raise_for_status()
+        response_data = response.json()
     except Exception as e:
         print(f"Error adding video page to movies database: {e}")
         return None
 
+    # Only treat the insert as successful when Notion returns a page id.
+    return response_data.get("id")

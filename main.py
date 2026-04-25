@@ -394,36 +394,51 @@ def update_handler(update):
         if pending[key]["command"] == "/choosemovie":
             movie = message_text
             try:
+                # Try the YouTube path first so links are saved with the video fields.
                 image = get_youtube_thumbnail_url(movie)
                 title = get_youtube_title(movie)
 
                 if check_no_queued() >= 3:
-                        unqueue_movie = check_oldest_queued()
-                        change_queued_status(unqueue_movie, "Not Queued")
+                    unqueue_movie = check_oldest_queued()
+                    change_queued_status(unqueue_movie, "Not Queued")
                     
                 if check_movie_database(title):
-                    change_queued_status(title, "Queued")
+                    queued = change_queued_status(title, "Queued")
                 else:
-                    add_video_page_to_movies(movie, image, title, user_name, queued="Queued")
+                    queued = add_video_page_to_movies(movie, image, title, user_name, queued="Queued")
+
+                # Do not send a success message when the database write/update failed.
+                if not queued:
+                    raise ValueError("Failed to queue video.")
 
                 send_message(chat_id, message_thread_id=message_thread_id, reply_to_message_id=message_id, text="Video Queued!")
                 del pending[key]
 
             except Exception as e:
+                print(f"Error processing video choice '{movie}': {e}")
                 try: 
+                    # A broken YouTube link should return an error instead of pretending it is an IMDb movie.
+                    if "youtube.com" in movie or "youtu.be" in movie:
+                        raise ValueError("YouTube video could not be queued.")
+
                     if check_no_queued() >= 3:
                         unqueue_movie = check_oldest_queued()
                         change_queued_status(unqueue_movie, "Not Queued")
 
                     if check_movie_database(movie):
-                        change_queued_status(movie, "Queued")
+                        queued = change_queued_status(movie, "Queued")
                     else: 
-                        add_page_to_movies(movie, user_name, queued="Queued")
+                        queued = add_page_to_movies(movie, user_name, queued="Queued")
+
+                    # Do not send a success message when IMDb lookup or page creation failed.
+                    if not queued:
+                        raise ValueError("Failed to queue movie.")
                 
                     send_message(chat_id, message_thread_id=message_thread_id, reply_to_message_id=message_id, text="Movie Queued!")
                     del pending[key]
                 
                 except Exception as e:
+                    print(f"Error processing movie choice '{movie}': {e}")
                     res = send_message(chat_id, "Error processing movie choice. Please try again.", 
                                         message_thread_id=message_thread_id, reply_to_message_id=message_id)
                     pending[key]["prompt_id"] = res["message_id"]
