@@ -361,6 +361,20 @@ def get_youtube_title(youtube_url):
     except requests.RequestException as e:
         raise ValueError(f"Unable to fetch YouTube title: {e}") from e
 
+    # Ask YouTube for structured metadata first so we do not depend on watch-page HTML.
+    try:
+        metadata_response = session.get(
+            "https://www.youtube.com/oembed",
+            params={"url": watch_url, "format": "json"},
+            timeout=5,
+        )
+        metadata_response.raise_for_status()
+        title = metadata_response.json().get("title", "").strip()
+        if title:
+            return title
+    except requests.RequestException:
+        pass
+
     # Try the normal page title first, then fall back to metadata formats
     # YouTube sometimes serves to non-browser clients.
     match = re.search(r"<title>(.*?)</title>", response.text, re.DOTALL)
