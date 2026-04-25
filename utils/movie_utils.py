@@ -5,6 +5,7 @@ import requests
 from utils.time_utils import *
 from config import *
 from utils.time_utils import get_last_sunday_date
+from urllib.parse import parse_qs, urlparse
 
 session = requests.Session()
 
@@ -280,3 +281,107 @@ def movie_summary(movie_title):
     genre = get_movie_genre(movie_title)
     summary = f"Movie: {movie_title}\nGenre: {genre}\nIMDb Rating: {rating}"
     return summary
+
+
+def get_youtube_thumbnail_url(youtube_url):
+    if not youtube_url:
+        raise ValueError("YouTube URL is required.")
+
+    parsed_url = urlparse(youtube_url.strip())
+    hostname = (parsed_url.hostname or "").lower()
+    video_id = None
+
+    if hostname in {"youtu.be", "www.youtu.be"}:
+        video_id = parsed_url.path.lstrip("/").split("/")[0]
+    elif hostname in {"youtube.com", "www.youtube.com", "m.youtube.com"}:
+        if parsed_url.path == "/watch":
+            video_id = parse_qs(parsed_url.query).get("v", [None])[0]
+        elif parsed_url.path.startswith(("/embed/", "/shorts/", "/live/")):
+            video_id = parsed_url.path.split("/")[2]
+
+    if not video_id:
+        raise ValueError("Invalid YouTube URL.")
+
+    return f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
+
+
+def _get_youtube_video_id(youtube_url):
+    if not youtube_url:
+        raise ValueError("YouTube URL is required.")
+
+    parsed_url = urlparse(youtube_url.strip())
+    hostname = (parsed_url.hostname or "").lower()
+    video_id = None
+
+    if hostname in {"youtu.be", "www.youtu.be"}:
+        video_id = parsed_url.path.lstrip("/").split("/")[0]
+    elif hostname in {"youtube.com", "www.youtube.com", "m.youtube.com"}:
+        if parsed_url.path == "/watch":
+            video_id = parse_qs(parsed_url.query).get("v", [None])[0]
+        elif parsed_url.path.startswith(("/embed/", "/shorts/", "/live/")):
+            parts = parsed_url.path.split("/")
+            if len(parts) > 2:
+                video_id = parts[2]
+
+    if not video_id:
+        raise ValueError("Invalid YouTube URL.")
+
+    return video_id
+
+
+def get_youtube_title(youtube_url):
+    video_id = _get_youtube_video_id(youtube_url)
+    watch_url = f"https://www.youtube.com/watch?v={video_id}"
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/122.0.0.0 Safari/537.36"
+        )
+    }
+
+    try:
+        response = session.get(watch_url, headers=headers, timeout=5)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        raise ValueError(f"Unable to fetch YouTube title: {e}") from e
+
+    match = re.search(r"<title>(.*?)</title>", response.text, re.DOTALL)
+    if not match:
+        raise ValueError("Unable to parse YouTube title.")
+
+    title = match.group(1).replace(" - YouTube", "").strip()
+    if not title:
+        raise ValueError("Unable to parse YouTube title.")
+
+    return title
+
+
+def add_video_page_to_movies(url, image, title, person, queued="Not Queued"):
+    from utils.database_utils import MOVIE_DATA_SOURCE_ID
+
+    video_page = {
+        "parent": {
+            "type": "data_source_id",
+            "data_source_id": MOVIE_DATA_SOURCE_ID
+        },
+        "properties": {
+            "Cover": {"files": [{
+                        "name": "Thumbnail",
+                        "type": "external",
+                        "external": {"url": image}}]},
+            "Movie": {"title": [{"text": {"content": title}}]},
+            "Person": {"select": {'name': person}},
+            "Status": {"select": {"name": "Not Watched"}},
+            "Queued": {"select": {"name": queued}},
+            "URL": {"url": url}
+        }
+    }
+
+    try:
+        response = requests.post(PAGES_END_POINT, headers=headers, data=json.dumps(video_page)).json()
+        return response["id"]
+    except Exception as e:
+        print(f"Error adding video page to movies database: {e}")
+        return None
+

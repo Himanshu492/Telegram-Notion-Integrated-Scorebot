@@ -393,26 +393,42 @@ def update_handler(update):
         
         if pending[key]["command"] == "/choosemovie":
             movie = message_text
+            try:
+                image = get_youtube_thumbnail_url(movie)
+                title = get_youtube_title(movie)
 
-            try: 
                 if check_no_queued() >= 3:
-                    unqueue_movie = check_oldest_queued()
-                    change_queued_status(unqueue_movie, "Not Queued")
-
+                        unqueue_movie = check_oldest_queued()
+                        change_queued_status(unqueue_movie, "Not Queued")
+                    
                 if check_movie_database(movie):
                     change_queued_status(movie, "Queued")
-                else: 
-                    add_page_to_movies(movie, user_name, queued="Queued")
-            
+                else:
+                    add_video_page_to_movies(movie, title, image, user_name, queued="Queued")
+
                 send_message(chat_id, message_thread_id=message_thread_id, reply_to_message_id=message_id, text="Movie Queued!")
                 del pending[key]
-            
+
             except Exception as e:
-                res = send_message(chat_id, "Error processing movie choice. Please try again.", 
-                                    message_thread_id=message_thread_id, reply_to_message_id=message_id)
-                pending[key]["prompt_id"] = res["message_id"]
-                pending[key]["expiry"] = time.time() + expiry_time
-            return
+                try: 
+                    if check_no_queued() >= 3:
+                        unqueue_movie = check_oldest_queued()
+                        change_queued_status(unqueue_movie, "Not Queued")
+
+                    if check_movie_database(movie):
+                        change_queued_status(movie, "Queued")
+                    else: 
+                        add_page_to_movies(movie, user_name, queued="Queued")
+                
+                    send_message(chat_id, message_thread_id=message_thread_id, reply_to_message_id=message_id, text="Movie Queued!")
+                    del pending[key]
+                
+                except Exception as e:
+                    res = send_message(chat_id, "Error processing movie choice. Please try again.", 
+                                        message_thread_id=message_thread_id, reply_to_message_id=message_id)
+                    pending[key]["prompt_id"] = res["message_id"]
+                    pending[key]["expiry"] = time.time() + expiry_time
+                return
             
     if message_text == "/connections@silverlining12bot":
         res = send_message(chat_id, "Please send your Connections game text.", 
