@@ -361,11 +361,21 @@ def get_youtube_title(youtube_url):
     except requests.RequestException as e:
         raise ValueError(f"Unable to fetch YouTube title: {e}") from e
 
+    # Try the normal page title first, then fall back to metadata formats
+    # YouTube sometimes serves to non-browser clients.
     match = re.search(r"<title>(.*?)</title>", response.text, re.DOTALL)
-    if not match:
-        raise ValueError("Unable to parse YouTube title.")
+    if match:
+        title = match.group(1).replace(" - YouTube", "").strip()
+    else:
+        match = re.search(r'<meta property="og:title" content="(.*?)">', response.text, re.DOTALL)
+        if match:
+            title = match.group(1).strip()
+        else:
+            match = re.search(r'"title":"(.*?)"', response.text, re.DOTALL)
+            if not match:
+                raise ValueError("Unable to parse YouTube title.")
+            title = bytes(match.group(1), "utf-8").decode("unicode_escape").strip()
 
-    title = match.group(1).replace(" - YouTube", "").strip()
     if not title:
         raise ValueError("Unable to parse YouTube title.")
 
