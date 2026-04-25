@@ -406,7 +406,7 @@ def update_handler(update):
                 else:
                     add_video_page_to_movies(movie, title, image, user_name, queued="Queued")
 
-                send_message(chat_id, message_thread_id=message_thread_id, reply_to_message_id=message_id, text="Movie Queued!")
+                send_message(chat_id, message_thread_id=message_thread_id, reply_to_message_id=message_id, text="Video Queued!")
                 del pending[key]
 
             except Exception as e:
