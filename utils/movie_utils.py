@@ -413,6 +413,7 @@ def add_video_page_to_movies(url, image, title, person, queued="Not Queued"):
                         "external": {"url": image}}]},
             "Movie": {"title": [{"text": {"content": title}}]},
             "Person": {"select": {'name': person}},
+            "Genre": {"multi_select": [{"name": "YouTube"}]},
             "Status": {"select": {"name": "Not Watched"}},
             "Queued": {"select": {"name": queued}},
             "URL": {"url": url}
