@@ -417,10 +417,7 @@ def update_handler(update):
             except Exception as e:
                 print(f"Error processing video choice '{movie}': {e}")
                 try: 
-                    # A broken YouTube link should return an error instead of pretending it is an IMDb movie.
-                    if "youtube.com" in movie or "youtu.be" in movie:
-                        raise ValueError("YouTube video could not be queued.")
-
+                    # If the video fields cannot be resolved, fall back to the normal movie flow.
                     if check_no_queued() >= 3:
                         unqueue_movie = check_oldest_queued()
                         change_queued_status(unqueue_movie, "Not Queued")
