@@ -173,12 +173,21 @@ def check_movie_database(movie_name):
 
     movie_id = _get_imdb_title_id(movie_name)
     url = f"{DATA_SOURCE_END_POINT}{MOVIE_DATA_SOURCE_ID}/query"
-    payload = {
-        "filter": {
-            "property": "ID",
-            "rich_text": {"equals": movie_id}
+    if movie_id:
+        payload = {
+            "filter": {
+                "property": "ID",
+                "rich_text": {"equals": movie_id}
+            }
         }
-    }
+    else:
+        # YouTube entries do not have an IMDb ID, so fall back to the stored title.
+        payload = {
+            "filter": {
+                "property": "Movie",
+                "title": {"equals": movie_name}
+            }
+        }
 
     try:
         response = requests.post(url, headers=headers, json=payload)
@@ -246,13 +255,23 @@ def check_oldest_queued():
 def change_queued_status(movie_name, new_status):
     from utils.database_utils import MOVIE_DATA_SOURCE_ID
 
+    movie_id = _get_imdb_title_id(movie_name)
     url = f"{DATA_SOURCE_END_POINT}{MOVIE_DATA_SOURCE_ID}/query"
-    payload = {
-        "filter": {
-            "property": "Movie",
-            "title": {"equals": movie_name}
+    if movie_id:
+        payload = {
+            "filter": {
+                "property": "ID",
+                "rich_text": {"equals": movie_id}
+            }
         }
-    }
+    else:
+        # YouTube entries do not have an IMDb ID, so fall back to the stored title.
+        payload = {
+            "filter": {
+                "property": "Movie",
+                "title": {"equals": movie_name}
+            }
+        }
 
     try:
         response = requests.post(url, headers=headers, json=payload)

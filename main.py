@@ -405,10 +405,6 @@ def update_handler(update):
                 image = get_youtube_thumbnail_url(movie)
                 title = get_youtube_title(movie)
 
-                if check_no_queued() >= 3:
-                    unqueue_movie = check_oldest_queued()
-                    change_queued_status(unqueue_movie, "Not Queued")
-                    
                 if check_movie_database(title):
                     queued = change_queued_status(title, "Queued")
                 else:
@@ -418,20 +414,18 @@ def update_handler(update):
                 if not queued:
                     raise ValueError("Failed to queue video.")
 
+                # Only unqueue the oldest item after the new queue action succeeded.
+                if check_no_queued() > 3:
+                    unqueue_movie = check_oldest_queued()
+                    change_queued_status(unqueue_movie, "Not Queued")
+
                 send_message(chat_id, message_thread_id=message_thread_id, reply_to_message_id=message_id, text="Video Queued!")
                 del pending[key]
 
             except Exception as e:
                 print(f"Error processing video choice '{movie}': {e}")
                 try: 
-                    # A broken YouTube link should return an error instead of pretending it is an IMDb movie.
-                    if "youtube.com" in movie or "youtu.be" in movie:
-                        raise ValueError("YouTube video could not be queued.")
-
-                    if check_no_queued() >= 3:
-                        unqueue_movie = check_oldest_queued()
-                        change_queued_status(unqueue_movie, "Not Queued")
-
+                    # If the video fields cannot be resolved, fall back to the normal movie flow.
                     if check_movie_database(movie):
                         queued = change_queued_status(movie, "Queued")
                     else: 
@@ -440,6 +434,11 @@ def update_handler(update):
                     # Do not send a success message when IMDb lookup or page creation failed.
                     if not queued:
                         raise ValueError("Failed to queue movie.")
+
+                    # Only unqueue the oldest item after the new queue action succeeded.
+                    if check_no_queued() > 3:
+                        unqueue_movie = check_oldest_queued()
+                        change_queued_status(unqueue_movie, "Not Queued")
                 
                     send_message(chat_id, message_thread_id=message_thread_id, reply_to_message_id=message_id, text="Movie Queued!")
                     del pending[key]
