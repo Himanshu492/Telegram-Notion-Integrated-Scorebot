@@ -250,6 +250,8 @@ def update_handler(update):
                                     message_thread_id=message_thread_id, reply_to_message_id=message_id)
                     page_id = get_page_id(scores, get_date_now(), user_name, "connections")
                     update_page_in_scores(page_id, score, tries=total_tries)
+                
+                update_page_in_day(user_name, get_date_now(date_format=notion_date_format), connections_score=score, connections_tries=total_tries)
                 del pending[key]
             except Exception as e:
                 res = send_message(chat_id, "Invalid input. Please try again.", 
@@ -296,6 +298,8 @@ def update_handler(update):
                     send_message(chat_id, f"{user_name}'s Globle score is updated to: {tries} guesses", 
                                     message_thread_id=message_thread_id, reply_to_message_id=message_id)
                     update_page_in_scores(page_id, tries)
+
+                update_page_in_day(user_name, get_date_now(date_format=notion_date_format), globle=tries)
                 del pending[key]
             except Exception as e:
                 res = send_message(chat_id, "Invalid image or unreadable time. Please send a clear image of your Globle result.", 
@@ -348,7 +352,8 @@ def update_handler(update):
                     send_message(chat_id, f"{user_name}'s Echo Chess tries taken updated to: {tries_taken}", 
                                 message_thread_id=message_thread_id, reply_to_message_id=message_id)
                     update_page_in_scores(page_id, tries_taken)
-                    
+
+                update_page_in_day(user_name, get_date_now(date_format=notion_date_format), echo_chess=tries_taken)
                 del pending[key]
             except Exception as e:
                 res = send_message(chat_id, "Invalid image or unreadable tries. Please send a clear image of your Echo Chess result.", 
@@ -381,6 +386,8 @@ def update_handler(update):
                     send_message(chat_id, f"{user_name}'s Wordle score updated to: {score}",
                                  message_thread_id=message_thread_id, reply_to_message_id=message_id)
                     update_page_in_scores(page_id, score)
+                
+                update_page_in_day(user_name, get_date_now(date_format=notion_date_format), wordle=score)
                 del pending[key]
                 
             except Exception as e:
@@ -573,11 +580,14 @@ def main():
         # Send daily summary at 00:00 only once per day
         if get_time_now() == "00:00":
             yesterday = get_date_yesterday()
+            today = get_date_now()
 
             if not if_exists(daily_winners, yesterday):
                 summary = generate_daily_summary(yesterday)
                 summary_chat_id = -1002538310918
                 send_message(summary_chat_id, summary)
+
+            add_page_to_day(today)
 
         # Send weekly summary at 00:00 on Mondays only once per week
         if get_time_now() == "00:00" and get_date_now(True) == "Monday":

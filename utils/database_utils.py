@@ -101,10 +101,71 @@ def add_page_to_weekly_winners(data_source_id, date, name, a, h, difference):
     return response["id"]
 
 
+def add_page_to_day(data_source_id, date, name):
+    url = PAGES_END_POINT
+    new_page = {
+        "parent": {
+            "type": "data_source_id",
+            "data_source_id": data_source_id
+        },
+        "properties": {
+            "Date": {"date": {"start": date}},
+            "ID": {"title": [{"text": {"content": "Record"}}]}
+        }
+    }
+
+    response = requests.post(url, headers=headers, data=json.dumps(new_page)).json()
+    return response["id"]
+
+
+def find_page_id_by_date_and_name(data_source_id, date):
+    url = f"{DATA_SOURCE_END_POINT}{data_source_id}/pages"
+    query = {
+        "filter": [
+                {
+                    "property": "Date",
+                    "date": {
+                        "equals": date
+                    }
+                }
+            ]
+    }
+
+    response = requests.post(url, headers=headers, data=json.dumps(query)).json()
+    results = response.get("results", [])
+    if results:
+        return results[0]["id"]
+    return None
+
+
+def update_page_in_day(name, date, wordle=None, globle=None, echo_chess=None, connections_score=None, connections_tries=None):
+    page_id = find_page_id_by_date_and_name(DAY_DATA_SOURCE_ID, date)
+    if not page_id:
+        print(f"No page found for date: {date}")
+        return None
+    url = f"{PAGES_END_POINT}{page_id}"
+    updated_properties = {"properties": {}}
+
+    if wordle is not None:
+        updated_properties["properties"][name + " Wordle"] = {"number": wordle}
+    if globle is not None:
+        updated_properties["properties"][name + " Globle"] = {"number": globle}
+    if echo_chess is not None:
+        updated_properties["properties"][name + " Echo Chess"] = {"number": echo_chess}
+    if connections_score is not None:
+        updated_properties["properties"][name + " Connections Score"] = {"number": connections_score}
+    if connections_tries is not None:
+        updated_properties["properties"][name + " Connections Tries"] = {"number": connections_tries}
+
+    response = requests.patch(url, headers=headers, data=json.dumps(updated_properties)).json()
+    return response
+
+
 SCORES_DATA_SOURCE_ID = get_data_source_id(SCORES_NOTION)
 DAILY_WINNERS_DATA_SOURCE_ID = get_data_source_id(DAILY_WINNERS_NOTION)
 WEEKLY_WINNERS_DATA_SOURCE_ID = get_data_source_id(WEEKLY_WINNERS_NOTION)
 MOVIE_DATA_SOURCE_ID = get_data_source_id(MOVIES_NOTION)
+DAY_DATA_SOURCE_ID = get_data_source_id(DAY_NOTION)
 
 # ----- MONGODB UTILITIES -----
 
