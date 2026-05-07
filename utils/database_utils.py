@@ -101,12 +101,12 @@ def add_page_to_weekly_winners(data_source_id, date, name, a, h, difference):
     return response["id"]
 
 
-def add_page_to_day(data_source_id, date):
+def add_page_to_day(date):
     url = PAGES_END_POINT
     new_page = {
         "parent": {
             "type": "data_source_id",
-            "data_source_id": data_source_id
+            "data_source_id": DAY_DATA_SOURCE_ID
         },
         "properties": {
             "Date": {"date": {"start": date}},
@@ -134,9 +134,9 @@ def find_page_id_by_date_and_name(data_source_id, date):
     }
 
     response = requests.post(url, headers=headers, data=json.dumps(query)).json()
-    results = response.get("results", [])
-    if results:
-        return results[0]["id"]
+    
+    if response:
+        return response[0]["id"]
     return None
 
 
