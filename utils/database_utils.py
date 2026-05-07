@@ -119,7 +119,7 @@ def add_page_to_day(date):
 
 
 def find_page_id_by_date_and_name(data_source_id, date):
-    url = f"{DATA_SOURCE_END_POINT}{data_source_id}/pages"
+    url = f"{DATA_SOURCE_END_POINT}{data_source_id}/query"
     query = {
         "filter": {
             "and": [
@@ -134,9 +134,10 @@ def find_page_id_by_date_and_name(data_source_id, date):
     }
 
     response = requests.post(url, headers=headers, data=json.dumps(query)).json()
+    results = response.get("results", [])
     
-    if response:
-        return response[0]["id"]
+    if results:
+        return results[0]["id"]
     return None
 
 
@@ -144,7 +145,7 @@ def update_page_in_day(name, date, wordle=None, globle=None, echo_chess=None, co
     page_id = find_page_id_by_date_and_name(DAY_DATA_SOURCE_ID, date)
     if not page_id:
         print(f"No page found for date: {date}")
-        return None
+        page_id = add_page_to_day(date)
     url = f"{PAGES_END_POINT}{page_id}"
     updated_properties = {"properties": {}}
 
@@ -159,7 +160,12 @@ def update_page_in_day(name, date, wordle=None, globle=None, echo_chess=None, co
     if connections_tries is not None:
         updated_properties["properties"][name + " Connections Tries"] = {"number": connections_tries}
 
-    response = requests.patch(url, headers=headers, data=json.dumps(updated_properties)).json()
+    try: 
+        response = requests.patch(url, headers=headers, data=json.dumps(updated_properties)).json()
+    except Exception as e:
+        print(f"Error updating page: {e}")
+        raise e
+    
     return response
 
 

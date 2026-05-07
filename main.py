@@ -299,7 +299,10 @@ def update_handler(update):
                                     message_thread_id=message_thread_id, reply_to_message_id=message_id)
                     update_page_in_scores(page_id, tries)
 
-                update_page_in_day(user_name, get_date_now(date_format=notion_date_format), globle=tries)
+                try:
+                    update_page_in_day(user_name, get_date_now(date_format=notion_date_format), globle=tries)
+                except Exception as e:
+                    print(f"Error updating day page for Globle: {e}")
                 del pending[key]
             except Exception as e:
                 res = send_message(chat_id, "Invalid image or unreadable time. Please send a clear image of your Globle result.", 
