@@ -582,7 +582,7 @@ def main():
         # Send daily summary at 00:00 only once per day
         if get_time_now() == "00:00":
             yesterday = get_date_yesterday()
-            today = get_date_now()
+            today = get_date_now(date_format=notion_date_format)
 
             if not if_exists(daily_winners, yesterday):
                 summary = generate_daily_summary(yesterday)
