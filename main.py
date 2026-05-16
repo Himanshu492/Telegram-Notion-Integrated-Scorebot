@@ -589,7 +589,8 @@ def main():
                 summary_chat_id = -1002538310918
                 send_message(summary_chat_id, summary)
 
-            add_page_to_day(today)
+            if not find_page_id_by_date_and_name(DAY_DATA_SOURCE_ID, today):
+                add_page_to_day(today)
 
         # Send weekly summary at 00:00 on Mondays only once per week
         if get_time_now() == "00:00" and get_date_now(True) == "Monday":
