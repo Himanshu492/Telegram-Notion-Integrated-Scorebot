@@ -598,7 +598,6 @@ def update_handler(update):
         send_message(chat_id, "Sorry you are not the current winner!", message_thread_id=message_thread_id)
         return
 
-
     if message_text == "/add_activity@silverlining12bot":
         res = send_keyboard(chat_id, "How do you want to add this activity?",
                             [["Manual Entry"], ["Receipt / Ticket Upload"], ["Cancel"]],
