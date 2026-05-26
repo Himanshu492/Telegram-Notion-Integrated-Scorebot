@@ -1,0 +1,318 @@
+I want you to review my existing Telegram bot codebase and propose a clear implementation plan for adding a new Telegram command called /add_activity.
+
+Do not make any actual code changes yet. Only tell me what changes you would make, which files you would add or modify, and how the full feature should work.
+
+Important:
+- Inspect the current codebase first.
+- Follow the existing coding style, file structure, naming style, helper style, and modularization patterns already used in my workspace.
+- Look for existing helper functions/modules for creating Notion pages, adding pages to databases, adding movie pages, adding date pages, adding food items, updating pages, querying/searching databases, and building Notion payloads.
+- Reuse my existing functions as much as possible instead of rewriting duplicate logic.
+- If a helper function already exists, use it.
+- If a clean helper function is missing, propose adding one in the appropriate existing helper/module file.
+- I want this to stay modular. Do not put all the logic inside the Telegram command handler.
+
+The feature:
+Add a new Telegram command called /add_activity that lets me create a new activity/date entry in my Notion database.
+
+The Notion database is called Dates.
+Use the data source ID that I provide in the workspace/codebase.
+Use the exact Notion property names and property types from the codebase / Notion schema.
+
+Main Telegram flow:
+When I run /add_activity, show Telegram keyboard options:
+
+1. Manual Entry
+2. Receipt / Ticket Upload
+3. Cancel
+
+Use Telegram keyboard buttons wherever possible.
+
+Required properties for the Dates entry:
+- Year
+- Time of Day
+- Person
+- Favourite
+- Status
+- Type
+- Photo
+- Date
+
+Other optional properties can be filled if available:
+- Date Idea
+- Location
+- Movie
+- Restaurants
+- 🍽️ Recipe Book
+- Notes
+
+Dates database property rules:
+- Date Idea is the title property.
+- Date is a date property.
+- Photo is a file property.
+- Location is a place property.
+- Type is a multi-select property.
+- Person is a select property with options: Aabha, Himanshu, Both.
+- Favourite is a select property with options: Yes, No.
+- Status is a status property and should always be set to Done.
+- Time of Day is a select property with options: Day, Night, Both.
+- Year is a relation property and should be derived from the Date.
+- Movie is a relation property.
+- Restaurants is a relation property.
+- 🍽️ Recipe Book is a relation property to Food Items.
+
+Type options for Dates:
+- Fancy
+- Activity
+- Drive
+- Game
+- Food
+- Shopping
+- Chilling
+- Movie
+- Nightlife
+- Attraction
+- Nature
+
+The bot should classify or ask the user to choose from these exact Type options. Since Type is multi-select, the implementation should support one or more values, but for the first version it is okay to usually pick one main type unless the existing codebase pattern suggests otherwise.
+
+Manual Entry flow:
+If the user chooses Manual Entry:
+- Ask for Date.
+- Ask for Type using Telegram keyboard options.
+- Ask for Person using keyboard options: Aabha, Himanshu, Both.
+- Ask for Favourite using keyboard options: Yes, No.
+- Ask for Time of Day using keyboard options: Day, Night, Both, unless it can be confidently derived from the Date/time.
+- Optionally ask for Photo.
+- Optionally ask for Notes.
+- Set Status to Done automatically.
+- Derive Year from Date.
+- Show a final summary before creating the Notion page.
+- Allow Confirm, Edit, Cancel.
+
+Receipt / Ticket Upload flow:
+If the user chooses Receipt / Ticket Upload:
+- Ask the user to send a receipt, ticket, or photo.
+- Save/use the uploaded Telegram file as the Photo property for the Dates entry.
+- Use LangGraph for the extraction workflow.
+- Store prompts separately in a prompts file.
+- Each prompt should be used by a specific LangGraph node/extraction step.
+- The graph should collect all extracted values into a structured state.
+
+Receipt/ticket extraction should try to identify:
+- Date
+- Type
+- Location
+- Movie name, if it is a movie
+- Restaurant name, if it is food/restaurant-related
+- Dish/item names, if it is a restaurant receipt
+- Dish/item prices, if available
+- Total price, if available
+- Cuisine, if available
+- Notes or useful extra context, if available
+
+Date extraction rule:
+The extracted date must be the actual transaction date, ticket date, booking date, or activity date.
+Do not accidentally use random dates from terms and conditions, ads, validity periods, promo text, or unrelated receipt text.
+
+After extraction:
+- Show a clean summary of what was found.
+- Ask the user to confirm.
+- Provide keyboard options:
+  - Confirm
+  - Edit
+  - Retry
+  - Cancel
+
+If the user chooses Edit:
+- Allow editing individual fields instead of restarting the whole flow.
+- Editable fields should include Date, Type, Person, Favourite, Time of Day, Location, Movie, Restaurant, Food Items, Notes, and Photo if supported cleanly.
+
+If the user chooses Retry:
+- Re-run the extraction or ask the user to upload a clearer receipt/ticket/photo.
+
+Movie relation handling:
+For the Movie relation:
+- Do not blindly create a new movie page.
+- First search/find the movie in the existing Movie database.
+- Use the existing movie-related functions in the codebase as much as possible.
+- If a movie does not exist, use the existing title-to-IMDb-ID / IMDb-ID lookup flow in the codebase.
+- Use the IMDb ID based lookup/creation flow that already fits the codebase pattern.
+- The goal is to link the correct Movie page to the Dates entry.
+
+Restaurants relation handling:
+For the Restaurants relation:
+- First search/find the restaurant in the Restaurants database.
+- If the restaurant does not exist, create it.
+- Use the Restaurants data source ID from the workspace/codebase.
+- Add modular helper functions if needed, for example:
+  - find_restaurant_by_name
+  - create_restaurant_page
+  - find_or_create_restaurant
+- Link the restaurant page to the Dates entry.
+
+Restaurants database relevant properties:
+- Name: title
+- Cuisine: multi-select
+- Favourite: select with Yes/No
+- Visited: select with Yes/No
+- Location: place
+- Photo: rollup, so do not treat it as a directly writable file property unless the schema/codebase supports otherwise.
+
+For restaurant creation:
+- Name is required.
+- Cuisine can be filled if confidently extracted or asked.
+- Favourite can be asked or defaulted based on the main Dates Favourite value only if that makes sense.
+- Visited should be set appropriately for an actual visited restaurant. For this /add_activity flow, likely set Visited to Yes when the activity is a completed food/date entry.
+- Location should be filled if extracted.
+- Do not try to directly write to Photo if it is a rollup.
+
+Food Items / 🍽️ Recipe Book relation handling:
+For Food Items:
+- First search/find the food item by Dish.
+- If the food item does not exist, create it.
+- Use the Food Items data source ID from the workspace/codebase.
+- Add modular helper functions if needed, for example:
+  - find_food_item_by_dish
+  - create_food_item_page
+  - find_or_create_food_item
+- Link created/found Food Items to the Dates entry through the 🍽️ Recipe Book relation.
+
+Food Items database relevant properties:
+- Dish: title
+- Date: date
+- Cuisine: multi-select
+- Favourite: select with Yes/No
+- Year: relation
+- Type: select with Recipe/Dish
+- Person: select with Aabha/Himanshu/Both
+- Photo: file
+- Date <3: relation back to Dates, if useful after the Dates page exists
+
+For Food Items creation:
+- Dish is required.
+- Date is compulsory to send.
+- Cuisine can be extracted or asked if needed.
+- Favourite should be Yes/No.
+- Year should be derived from Date.
+- Type should usually be Dish for restaurant/outside food.
+- Type should be Recipe for homemade/recipe items, but this can be thought through later. For now, propose a clean rule or ask the user when ambiguous.
+- Person can reuse the selected Person from the Dates flow if appropriate.
+- Photo can reuse the uploaded receipt/photo if appropriate and supported.
+
+Notion creation order:
+Think carefully about order because relations may depend on page IDs/URLs.
+A likely flow:
+1. Gather all extracted/manual data.
+2. Find/create related Movie page if needed.
+3. Find/create Restaurant page if needed.
+4. Find/create Food Items pages if needed.
+5. Create the main Dates page with relations filled.
+6. If needed, update related Food Items or Restaurants with a relation back to the created Dates page, depending on how the relation is configured and how the existing codebase handles two-way relations.
+
+LangGraph:
+Use LangGraph because this feature has state, branching, retries, review/edit steps, manual fallback, and receipt/ticket extraction.
+
+Propose:
+- The LangGraph state structure.
+- The graph nodes.
+- The conditional edges.
+- How manual mode and receipt mode fit together.
+- How errors and retries are handled.
+- How the extracted data is validated before Notion creation.
+
+Suggested LangGraph nodes may include:
+- start_add_activity
+- choose_input_mode
+- wait_for_receipt_or_ticket
+- extract_receipt_text_or_image_data
+- extract_date
+- extract_type
+- extract_location
+- extract_movie
+- extract_restaurant
+- extract_food_items
+- extract_price_details
+- normalize_extracted_data
+- ask_missing_required_fields
+- resolve_movie_relation
+- resolve_restaurant_relation
+- resolve_food_item_relations
+- build_dates_payload
+- review_summary
+- edit_field
+- create_notion_pages
+- final_success_or_error
+
+You can rename these based on the codebase style.
+
+Prompt file:
+Create or use a prompts file/module that stores separate prompts for:
+- Date extraction
+- Type classification
+- Location extraction
+- Movie extraction
+- Restaurant extraction
+- Food item/dish extraction
+- Price extraction
+- Cuisine extraction
+- Final normalization/validation
+
+Keep prompts separate from workflow logic.
+
+Review/edit flow:
+Before anything is sent to Notion:
+- Show a summary of all values.
+- Show what will be created/found/linked:
+  - Dates page
+  - Movie relation if any
+  - Restaurant relation if any
+  - Food Items relation if any
+- Ask Confirm/Edit/Retry/Cancel.
+- If Edit, allow choosing a specific field to edit.
+- After edit, show the summary again.
+
+Final planning response:
+Please give me a planning-only response with these sections:
+
+1. Overall feature flow
+2. Files you would add
+3. Files you would modify
+4. Existing helpers/modules you would inspect and reuse
+5. Telegram command flow step-by-step
+6. LangGraph state structure
+7. LangGraph nodes and conditional edges
+8. Prompt file structure
+9. Manual entry flow
+10. Receipt/ticket upload flow
+11. Movie relation resolution
+12. Restaurant relation resolution
+13. Food Items / 🍽️ Recipe Book relation resolution
+14. Notion payload preparation
+15. Notion page creation/update order
+16. Review, edit, retry, and cancel logic
+17. Edge cases to handle
+18. Assumptions you need me to confirm before implementation
+
+Because this is a large feature, please also break the implementation plan into small milestones.
+
+For each milestone, include:
+- What the milestone achieves
+- What files are touched
+- What helper functions are reused or added
+- What the expected behavior is
+- How I can test that milestone before moving to the next one
+
+Suggested milestones:
+1. Basic /add_activity command and Telegram keyboard entry point
+2. Manual Entry flow
+3. Basic Dates page creation in Notion
+4. Receipt/Ticket upload handling
+5. LangGraph extraction flow
+6. Movie relation resolution
+7. Restaurant relation resolution
+8. Food Items / 🍽️ Recipe Book relation resolution
+9. Final review/edit/retry/cancel polish
+
+Do not make code changes yet.
+Do not add extra features I did not ask for.
+Keep the plan clear enough that I can understand exactly how the feature will be built.

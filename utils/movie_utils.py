@@ -449,3 +449,34 @@ def add_video_page_to_movies(url, image, title, person, queued="Not Queued"):
 
     # Only treat the insert as successful when Notion returns a page id.
     return response_data.get("id")
+
+
+def get_movie_page_id(movie_name):
+    """Return Notion page_id for movie_name in the Movies database, or None if not found."""
+    from utils.database_utils import MOVIE_DATA_SOURCE_ID
+    movie_id = _get_imdb_title_id(movie_name)
+    url = f"{DATA_SOURCE_END_POINT}{MOVIE_DATA_SOURCE_ID}/query"
+    payload = (
+        {"filter": {"property": "ID", "rich_text": {"equals": movie_id}}}
+        if movie_id else
+        {"filter": {"property": "Movie", "title": {"equals": movie_name}}}
+    )
+    try:
+        resp = requests.post(url, headers=headers, json=payload)
+        resp.raise_for_status()
+        results = resp.json().get("results", [])
+        return results[0]["id"] if results else None
+    except Exception as e:
+        print(f"Error getting movie page ID for '{movie_name}': {e}")
+        return None
+
+
+def find_or_create_movie_page(movie_name, person="Both"):
+    """
+    Return the Notion page_id for movie_name, creating the page if it doesn't exist.
+    Returns None if the movie cannot be resolved on IMDb.
+    """
+    page_id = get_movie_page_id(movie_name)
+    if page_id:
+        return page_id
+    return add_page_to_movies(movie_name, person)

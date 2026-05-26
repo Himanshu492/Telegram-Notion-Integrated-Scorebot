@@ -7,6 +7,7 @@ from utils.time_utils import get_date_yesterday, get_date_now, get_time_now, not
 from utils.database_utils import *
 from utils.daily_utils import *
 from utils.movie_utils import *
+from utils.activity_utils import handle_add_activity_step
 pending = {}
 games = ["globle", "connections", "echo_chess", "wordle"]
 
@@ -31,6 +32,39 @@ def send_message(chat_id, text, message_thread_id=None, force_reply=False, reply
     response = requests.post(f"{BASE}/sendMessage", json=payload, timeout=5)
     response.raise_for_status()
 
+    return response.json()["result"]
+
+
+def send_keyboard(chat_id, text, buttons, message_thread_id=None, one_time=True, resize=True):
+    """Send a ReplyKeyboardMarkup message. buttons: list of lists of strings."""
+    keyboard = [[{"text": btn} for btn in row] for row in buttons]
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "reply_markup": {
+            "keyboard": keyboard,
+            "one_time_keyboard": one_time,
+            "resize_keyboard": resize,
+        }
+    }
+    if message_thread_id:
+        payload["message_thread_id"] = message_thread_id
+    response = requests.post(f"{BASE}/sendMessage", json=payload, timeout=5)
+    response.raise_for_status()
+    return response.json()["result"]
+
+
+def remove_keyboard(chat_id, text, message_thread_id=None):
+    """Send a message that removes any active ReplyKeyboard."""
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "reply_markup": {"remove_keyboard": True}
+    }
+    if message_thread_id:
+        payload["message_thread_id"] = message_thread_id
+    response = requests.post(f"{BASE}/sendMessage", json=payload, timeout=5)
+    response.raise_for_status()
     return response.json()["result"]
 
 
@@ -454,6 +488,13 @@ def update_handler(update):
                     pending[key]["expiry"] = time.time() + expiry_time
                 return
             
+        if key in pending and pending[key]["command"] == "/add_activity":
+            pending[key]["expiry"] = time.time() + 600
+            keep = handle_add_activity_step(update, pending[key], send_message, send_keyboard, remove_keyboard)
+            if not keep:
+                del pending[key]
+            return
+
     if message_text == "/connections@silverlining12bot":
         res = send_message(chat_id, "Please send your Connections game text.", 
                         message_thread_id=message_thread_id, 
@@ -557,6 +598,18 @@ def update_handler(update):
         send_message(chat_id, "Sorry you are not the current winner!", message_thread_id=message_thread_id)
         return
 
+
+    if message_text == "/add_activity@silverlining12bot":
+        res = send_keyboard(chat_id, "How do you want to add this activity?",
+                            [["Manual Entry"], ["Receipt / Ticket Upload"], ["Cancel"]],
+                            message_thread_id=message_thread_id)
+        pending[key] = {
+            "command": "/add_activity",
+            "step": "choose_mode",
+            "data": {},
+            "expiry": time.time() + 600
+        }
+        return
 
     if extract_command(update):  # only reply if it was a bot command we don't recognize
         if message_thread_id:
