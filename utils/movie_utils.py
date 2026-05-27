@@ -9,6 +9,16 @@ from urllib.parse import parse_qs, urlparse
 
 session = requests.Session()
 
+_BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/122.0.0.0 Safari/537.36"
+    ),
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://www.google.com/",
+}
+
 
 # ----- MOVIE UTILITIES -----
 def _get_imdb_suggestion(title):
@@ -46,18 +56,9 @@ def get_movie_name_from_id(movie_id):
         return None
 
     imdb_url = f"https://www.imdb.com/title/{movie_id}/reference/"
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/122.0.0.0 Safari/537.36"
-        ),
-        "Accept-Language": "en-US,en;q=0.9",
-        "Referer": "https://www.google.com/",
-    }
 
     try:
-        response = session.get(imdb_url, headers=headers, timeout=3)
+        response = session.get(imdb_url, headers=_BROWSER_HEADERS, timeout=3)
         response.raise_for_status()
     except requests.RequestException as e:
         print(f"Error fetching movie name for ID {movie_id}: {e}")
@@ -94,6 +95,35 @@ def get_imdb_rating(movie_title):
         return None
 
     return data[0].get("rating")
+
+
+def get_movie_runtime(movie_title):
+    title = (movie_title or "").strip()
+    if not title:
+        return None
+
+    title_id = _get_imdb_title_id(title)
+    if not title_id:
+        return None
+
+    query = f'SELECT ?duration WHERE {{ ?item wdt:P345 "{title_id}" . ?item wdt:P2047 ?duration . }}'
+    try:
+        response = session.get(
+            "https://query.wikidata.org/sparql",
+            params={"query": query, "format": "json"},
+            headers={"User-Agent": "movie-lookup/1.0"},
+            timeout=10,
+        )
+        response.raise_for_status()
+        bindings = response.json()["results"]["bindings"]
+    except (requests.RequestException, KeyError, ValueError) as e:
+        print(f"Error fetching runtime for {movie_title}: {e}")
+        return None
+
+    if bindings:
+        return int(bindings[0]["duration"]["value"])
+
+    return None
 
 
 def get_movie_image_url(movie_title):
@@ -134,6 +164,7 @@ def add_page_to_movies(movie, person, queued="Not Queued"):
     image_url = ((suggestion.get("i") or {}).get("imageUrl"))
     rating = get_imdb_rating(movie)
     genre = get_movie_genre(movie)
+    runtime = get_movie_runtime(movie)
 
     url = PAGES_END_POINT
     new_page = {
@@ -152,7 +183,8 @@ def add_page_to_movies(movie, person, queued="Not Queued"):
             "Genre": {"multi_select": [{"name": genre}]},
             "Status": {"select": {"name": "Not Watched"}},
             "Queued": {"select": {"name": queued}},
-            "ID": {"rich_text": [{"text": {"content": movie_id}}]}
+            "ID": {"rich_text": [{"text": {"content": movie_id}}]},
+            "Runtime Minutes": {"number": runtime}
         }
     }
 
@@ -366,16 +398,9 @@ def _get_youtube_video_id(youtube_url):
 def get_youtube_title(youtube_url):
     video_id = _get_youtube_video_id(youtube_url)
     watch_url = f"https://www.youtube.com/watch?v={video_id}"
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/122.0.0.0 Safari/537.36"
-        )
-    }
 
     try:
-        response = session.get(watch_url, headers=headers, timeout=5)
+        response = session.get(watch_url, headers=_BROWSER_HEADERS, timeout=5)
         response.raise_for_status()
     except requests.RequestException as e:
         raise ValueError(f"Unable to fetch YouTube title: {e}") from e
@@ -417,8 +442,28 @@ def get_youtube_title(youtube_url):
     return title
 
 
+def get_youtube_runtime(youtube_url):
+    video_id = _get_youtube_video_id(youtube_url)
+    watch_url = f"https://www.youtube.com/watch?v={video_id}"
+
+    try:
+        response = session.get(watch_url, headers=_BROWSER_HEADERS, timeout=5)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        print(f"Error fetching YouTube runtime: {e}")
+        return None
+
+    match = re.search(r'"lengthSeconds"\s*:\s*"(\d+)"', response.text)
+    if match:
+        return int(match.group(1)) // 60
+
+    return None
+
+
 def add_video_page_to_movies(url, image, title, person, queued="Not Queued"):
     from utils.database_utils import MOVIE_DATA_SOURCE_ID
+
+    runtime = get_youtube_runtime(url)
 
     video_page = {
         "parent": {
@@ -435,7 +480,8 @@ def add_video_page_to_movies(url, image, title, person, queued="Not Queued"):
             "Genre": {"multi_select": [{"name": "YouTube"}]},
             "Status": {"select": {"name": "Not Watched"}},
             "Queued": {"select": {"name": queued}},
-            "URL": {"url": url}
+            "URL": {"url": url},
+            "Runtime Minutes": {"number": runtime}
         }
     }
 
