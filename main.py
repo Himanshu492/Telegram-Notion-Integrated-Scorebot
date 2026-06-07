@@ -478,7 +478,17 @@ def update_handler(update):
                     rating = get_imdb_rating(resolved_title)
                     genre = get_movie_genre(resolved_title)
                     runtime = get_movie_runtime(resolved_title)
-                    caption = f"<b>{resolved_title}</b>\n<b>IMDb:</b> {rating if rating is not None else 'N/A'}\n<b>Genre:</b> {genre or 'N/A'}\n<b>Runtime:</b> {f'{runtime} min' if runtime else 'N/A'}"
+                    if runtime:
+                        hrs, mins = divmod(runtime, 60)
+                        if hrs and mins:
+                            runtime_str = f"{hrs} hr{'s' if hrs > 1 else ''} {mins} min{'s' if mins > 1 else ''}"
+                        elif hrs:
+                            runtime_str = f"{hrs} hr{'s' if hrs > 1 else ''}"
+                        else:
+                            runtime_str = f"{mins} min{'s' if mins > 1 else ''}"
+                    else:
+                        runtime_str = "N/A"
+                    caption = f"<b>{resolved_title} ({rating if rating is not None else 'N/A'})</b>\n<b>Genre:</b> {genre or 'N/A'}\n<b>Runtime:</b> {runtime_str}"
                     send_photo(chat_id, image, caption=caption, message_thread_id=message_thread_id, reply_markup=reply_keyboard, parse_mode="HTML")
                     pending[key] = {"command": "/choosemovie_confirm", "type": "movie", "movie": movie, "resolved_title": resolved_title, "movie_id": suggestion["id"], "image": image, "rating": rating, "genre": genre, "runtime": runtime, "user_name": user_name, "expiry": time.time() + expiry_time}
                 except Exception as e:
