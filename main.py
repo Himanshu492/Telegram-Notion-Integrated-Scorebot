@@ -436,7 +436,8 @@ def update_handler(update):
                         if check_movie_database(resolved):
                             queued = change_queued_status(resolved, "Queued")
                         else:
-                            queued = add_page_to_movies(resolved, p["user_name"], queued="Queued")
+                            prefetched = {"movie_id": p["movie_id"], "image": p["image"], "rating": p["rating"], "genre": p["genre"], "runtime": p["runtime"]}
+                            queued = add_page_to_movies(resolved, p["user_name"], queued="Queued", prefetched=prefetched)
                         if not queued:
                             raise ValueError("Failed to queue movie.")
                         if check_no_queued() > 3:
@@ -479,7 +480,7 @@ def update_handler(update):
                     runtime = get_movie_runtime(resolved_title)
                     caption = f"<b>{resolved_title}</b>\n<b>IMDb:</b> {rating if rating is not None else 'N/A'}\n<b>Genre:</b> {genre or 'N/A'}\n<b>Runtime:</b> {f'{runtime} min' if runtime else 'N/A'}"
                     send_photo(chat_id, image, caption=caption, message_thread_id=message_thread_id, reply_markup=reply_keyboard, parse_mode="HTML")
-                    pending[key] = {"command": "/choosemovie_confirm", "type": "movie", "movie": movie, "resolved_title": resolved_title, "user_name": user_name, "expiry": time.time() + expiry_time}
+                    pending[key] = {"command": "/choosemovie_confirm", "type": "movie", "movie": movie, "resolved_title": resolved_title, "movie_id": suggestion["id"], "image": image, "rating": rating, "genre": genre, "runtime": runtime, "user_name": user_name, "expiry": time.time() + expiry_time}
                 except Exception as e:
                     print(f"Error processing movie choice '{movie}': {e}")
                     res = send_message(chat_id, "Error processing movie choice. Please try again.", message_thread_id=message_thread_id, reply_to_message_id=message_id)

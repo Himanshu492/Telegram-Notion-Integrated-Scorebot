@@ -140,31 +140,35 @@ def get_movie_genre(movie_title):
         "and you will only reply with the genre (ONE CATEGORY) of the movie. "
         "no preamble, no explanation, no punctuation, no extra words."}
     ])
-    
-    try: 
+
+    try:
         response = genre_chat.send_message(movie_title)
-        # now to convert to title case
-        genre = response.text.strip().title()
-        return genre
+        return response.text.strip().title()
     except Exception as e:
         print(f"Error fetching genre for {movie_title}: {e}")
         return None
     
 
-def add_page_to_movies(movie, person, queued="Not Queued"):
-    from utils.movie_utils import get_imdb_rating, get_movie_genre
+def add_page_to_movies(movie, person, queued="Not Queued", prefetched=None):
     from utils.database_utils import MOVIE_DATA_SOURCE_ID
 
-    suggestion = _get_imdb_suggestion(movie)
-    if not suggestion:
-        return None
-
-    movie = suggestion["l"]
-    movie_id = suggestion["id"]
-    image_url = ((suggestion.get("i") or {}).get("imageUrl"))
-    rating = get_imdb_rating(movie)
-    genre = get_movie_genre(movie)
-    runtime = get_movie_runtime(movie)
+    if prefetched:
+        movie_id = prefetched["movie_id"]
+        image_url = prefetched["image"]
+        rating = prefetched["rating"]
+        genre = prefetched["genre"]
+        runtime = prefetched["runtime"]
+    else:
+        from utils.movie_utils import get_imdb_rating, get_movie_genre
+        suggestion = _get_imdb_suggestion(movie)
+        if not suggestion:
+            return None
+        movie = suggestion["l"]
+        movie_id = suggestion["id"]
+        image_url = ((suggestion.get("i") or {}).get("imageUrl"))
+        rating = get_imdb_rating(movie)
+        genre = get_movie_genre(movie)
+        runtime = get_movie_runtime(movie)
 
     url = PAGES_END_POINT
     new_page = {
