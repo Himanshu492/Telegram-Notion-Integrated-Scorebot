@@ -34,7 +34,7 @@ def send_message(chat_id, text, message_thread_id=None, force_reply=False, reply
     return response.json()["result"]
 
 
-def send_photo(chat_id, photo_url, caption=None, message_thread_id=None, reply_markup=None):
+def send_photo(chat_id, photo_url, caption=None, message_thread_id=None, reply_markup=None, parse_mode=None):
     payload = {"chat_id": chat_id, "photo": photo_url}
     if caption:
         payload["caption"] = caption
@@ -42,6 +42,8 @@ def send_photo(chat_id, photo_url, caption=None, message_thread_id=None, reply_m
         payload["message_thread_id"] = message_thread_id
     if reply_markup:
         payload["reply_markup"] = reply_markup
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
     response = requests.post(f"{BASE}/sendPhoto", json=payload, timeout=10)
     response.raise_for_status()
     return response.json()["result"]
@@ -216,60 +218,6 @@ def connections_logic(text):
             score += 1
 
     return score, total_tries
-
-
-def handle_callback_query(cq):
-    expiry_time = 120
-    cq_msg = cq.get("message", {})
-    chat_id = cq_msg.get("chat", {}).get("id")
-    thread_id = cq_msg.get("message_thread_id")
-    user_id = cq["from"]["id"]
-    user_name = cq["from"].get("first_name", "User")
-    data = cq.get("data", "")
-
-    requests.post(f"{BASE}/answerCallbackQuery", json={"callback_query_id": cq["id"]}, timeout=5)
-
-    key = (chat_id, user_id, thread_id)
-    if key not in pending or pending[key]["command"] != "/choosemovie_confirm":
-        return
-
-    p = pending[key]
-    if data == "confirm_yes":
-        try:
-            if p["type"] == "video":
-                movie, image, title = p["movie"], p["image"], p["title"]
-                if check_movie_database(title):
-                    queued = change_queued_status(title, "Queued")
-                else:
-                    queued = add_video_page_to_movies(movie, image, title, user_name, queued="Queued")
-                if not queued:
-                    raise ValueError("Failed to queue video.")
-                if check_no_queued() > 3:
-                    change_queued_status(check_oldest_queued(), "Not Queued")
-                send_message(chat_id, "Video Queued!", message_thread_id=thread_id)
-            else:
-                movie = p["movie"]
-                if check_movie_database(movie):
-                    queued = change_queued_status(movie, "Queued")
-                else:
-                    queued = add_page_to_movies(movie, user_name, queued="Queued")
-                if not queued:
-                    raise ValueError("Failed to queue movie.")
-                if check_no_queued() > 3:
-                    change_queued_status(check_oldest_queued(), "Not Queued")
-                send_message(chat_id, "Movie Queued!", message_thread_id=thread_id)
-        except Exception as e:
-            print(f"Error queuing confirmed choice: {e}")
-            send_message(chat_id, "Error queuing. Please try again.", message_thread_id=thread_id)
-        del pending[key]
-
-    elif data == "confirm_no":
-        res = send_message(chat_id, "Please choose another movie.", message_thread_id=thread_id, force_reply=True)
-        pending[key] = {"command": "/choosemovie", "prompt_id": res["message_id"], "expiry": time.time() + expiry_time}
-
-    elif data == "confirm_cancel":
-        send_message(chat_id, "Cancelled.", message_thread_id=thread_id)
-        del pending[key]
 
 
  # ----- UPDATE HANDLER -----
@@ -468,30 +416,70 @@ def update_handler(update):
                 pending[key]["expiry"] = time.time() + expiry_time
             return
         
+        if pending[key]["command"] == "/choosemovie_confirm":
+            p = pending[key]
+            if message_text == "Yes":
+                try:
+                    if p["type"] == "video":
+                        movie, image, title = p["movie"], p["image"], p["title"]
+                        if check_movie_database(title):
+                            queued = change_queued_status(title, "Queued")
+                        else:
+                            queued = add_video_page_to_movies(movie, image, title, p["user_name"], queued="Queued")
+                        if not queued:
+                            raise ValueError("Failed to queue video.")
+                        if check_no_queued() > 3:
+                            change_queued_status(check_oldest_queued(), "Not Queued")
+                        send_message(chat_id, "Video Queued!", message_thread_id=message_thread_id)
+                    else:
+                        resolved = p["resolved_title"]
+                        if check_movie_database(resolved):
+                            queued = change_queued_status(resolved, "Queued")
+                        else:
+                            queued = add_page_to_movies(resolved, p["user_name"], queued="Queued")
+                        if not queued:
+                            raise ValueError("Failed to queue movie.")
+                        if check_no_queued() > 3:
+                            change_queued_status(check_oldest_queued(), "Not Queued")
+                        send_message(chat_id, "Movie Queued!", message_thread_id=message_thread_id)
+                except Exception as e:
+                    print(f"Error queuing confirmed choice: {e}")
+                    send_message(chat_id, "Error queuing. Please try again.", message_thread_id=message_thread_id)
+                del pending[key]
+            elif message_text == "No":
+                res = send_message(chat_id, "Please choose another movie.", message_thread_id=message_thread_id, force_reply=True)
+                pending[key] = {"command": "/choosemovie", "prompt_id": res["message_id"], "expiry": time.time() + expiry_time}
+            elif message_text == "Cancel":
+                send_message(chat_id, "Cancelled.", message_thread_id=message_thread_id)
+                del pending[key]
+            return
+
         if pending[key]["command"] == "/choosemovie":
             movie = message_text
-            confirm_keyboard = {"inline_keyboard": [[
-                {"text": "Yes", "callback_data": "confirm_yes"},
-                {"text": "No", "callback_data": "confirm_no"},
-                {"text": "Cancel", "callback_data": "confirm_cancel"}
-            ]]}
+            reply_keyboard = {"keyboard": [["Yes", "No", "Cancel"]], "one_time_keyboard": True, "resize_keyboard": True}
             try:
                 # Try YouTube path first so links are saved with the video fields.
                 image = get_youtube_thumbnail_url(movie)
                 title = get_youtube_title(movie)
-                send_photo(chat_id, image, caption=title, message_thread_id=message_thread_id, reply_markup=confirm_keyboard)
-                pending[key] = {"command": "/choosemovie_confirm", "type": "video", "movie": movie, "image": image, "title": title, "expiry": time.time() + expiry_time}
+                send_photo(chat_id, image, caption=f"<b>{title}</b>", message_thread_id=message_thread_id, reply_markup=reply_keyboard, parse_mode="HTML")
+                pending[key] = {"command": "/choosemovie_confirm", "type": "video", "movie": movie, "image": image, "title": title, "user_name": user_name, "expiry": time.time() + expiry_time}
             except Exception:
                 try:
                     # Fall back to movie path.
-                    image = get_movie_image_url(movie)
-                    if not image:
+                    from utils.movie_utils import _get_imdb_suggestion
+                    suggestion = _get_imdb_suggestion(movie)
+                    if not suggestion:
                         raise ValueError("Movie not found.")
-                    rating = get_imdb_rating(movie)
-                    genre = get_movie_genre(movie)
-                    caption = f"{movie}\nIMDb: {rating if rating is not None else 'N/A'}\nGenre: {genre or 'N/A'}"
-                    send_photo(chat_id, image, caption=caption, message_thread_id=message_thread_id, reply_markup=confirm_keyboard)
-                    pending[key] = {"command": "/choosemovie_confirm", "type": "movie", "movie": movie, "expiry": time.time() + expiry_time}
+                    resolved_title = suggestion["l"]
+                    image = (suggestion.get("i") or {}).get("imageUrl")
+                    if not image:
+                        raise ValueError("No poster found.")
+                    rating = get_imdb_rating(resolved_title)
+                    genre = get_movie_genre(resolved_title)
+                    runtime = get_movie_runtime(resolved_title)
+                    caption = f"<b>{resolved_title}</b>\n<b>IMDb:</b> {rating if rating is not None else 'N/A'}\n<b>Genre:</b> {genre or 'N/A'}\n<b>Runtime:</b> {f'{runtime} min' if runtime else 'N/A'}"
+                    send_photo(chat_id, image, caption=caption, message_thread_id=message_thread_id, reply_markup=reply_keyboard, parse_mode="HTML")
+                    pending[key] = {"command": "/choosemovie_confirm", "type": "movie", "movie": movie, "resolved_title": resolved_title, "user_name": user_name, "expiry": time.time() + expiry_time}
                 except Exception as e:
                     print(f"Error processing movie choice '{movie}': {e}")
                     res = send_message(chat_id, "Error processing movie choice. Please try again.", message_thread_id=message_thread_id, reply_to_message_id=message_id)
@@ -616,10 +604,7 @@ def main():
 
         for update in updates:
             last_update_id = update["update_id"] + 1
-            if "callback_query" in update:
-                handle_callback_query(update["callback_query"])
-            else:
-                update_handler(update)
+            update_handler(update)
 
         # Clean up expired pending prompts
         current_time = time.time()
