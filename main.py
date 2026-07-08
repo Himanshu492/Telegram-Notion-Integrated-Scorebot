@@ -49,6 +49,67 @@ def send_photo(chat_id, photo_url, caption=None, message_thread_id=None, reply_m
     return response.json()["result"]
 
 
+def format_runtime(runtime):
+    if not runtime:
+        return "N/A"
+
+    hrs, mins = divmod(runtime, 60)
+    if hrs and mins:
+        return f"{hrs} hr{'s' if hrs > 1 else ''} {mins} min{'s' if mins > 1 else ''}"
+    if hrs:
+        return f"{hrs} hr{'s' if hrs > 1 else ''}"
+    return f"{mins} min{'s' if mins > 1 else ''}"
+
+
+def send_movie_confirmation(chat_id, message_thread_id, movie, suggestions, suggestion_index, user_name, reply_keyboard, expiry_time):
+    while suggestion_index < len(suggestions):
+        suggestion = suggestions[suggestion_index]
+        resolved_title = suggestion["l"]
+        movie_id = suggestion["id"]
+        image = (suggestion.get("i") or {}).get("imageUrl")
+
+        if not image:
+            suggestion_index += 1
+            continue
+
+        rating = get_imdb_rating_by_id(movie_id, resolved_title)
+        genre = get_movie_genre(resolved_title)
+        runtime = get_movie_runtime_by_id(movie_id, resolved_title)
+        year = suggestion.get("y")
+        display_title = f"{resolved_title} ({year})" if year else resolved_title
+        caption = (
+            f"<b>{display_title} ({rating if rating is not None else 'N/A'})</b>\n"
+            f"<b>Genre:</b> {genre or 'N/A'}\n"
+            f"<b>Runtime:</b> {format_runtime(runtime)}"
+        )
+
+        send_photo(
+            chat_id,
+            image,
+            caption=caption,
+            message_thread_id=message_thread_id,
+            reply_markup=reply_keyboard,
+            parse_mode="HTML"
+        )
+        return {
+            "command": "/choosemovie_confirm",
+            "type": "movie",
+            "movie": movie,
+            "resolved_title": resolved_title,
+            "movie_id": movie_id,
+            "image": image,
+            "rating": rating,
+            "genre": genre,
+            "runtime": runtime,
+            "user_name": user_name,
+            "suggestions": suggestions,
+            "suggestion_index": suggestion_index,
+            "expiry": time.time() + expiry_time
+        }
+
+    return None
+
+
 def extract_command(update):
     if "entities" in update["message"]:
         for entity in update["message"]["entities"]:
@@ -433,10 +494,11 @@ def update_handler(update):
                         send_message(chat_id, "Video Queued!", message_thread_id=message_thread_id)
                     else:
                         resolved = p["resolved_title"]
-                        if check_movie_database(resolved):
-                            queued = change_queued_status(resolved, "Queued")
+                        movie_id = p["movie_id"]
+                        if check_movie_database(resolved, movie_id=movie_id):
+                            queued = change_queued_status(resolved, "Queued", movie_id=movie_id)
                         else:
-                            prefetched = {"movie_id": p["movie_id"], "image": p["image"], "rating": p["rating"], "genre": p["genre"], "runtime": p["runtime"]}
+                            prefetched = {"movie_id": movie_id, "image": p["image"], "rating": p["rating"], "genre": p["genre"], "runtime": p["runtime"]}
                             queued = add_page_to_movies(resolved, p["user_name"], queued="Queued", prefetched=prefetched)
                         if not queued:
                             raise ValueError("Failed to queue movie.")
@@ -448,8 +510,27 @@ def update_handler(update):
                     send_message(chat_id, "Error queuing. Please try again.", message_thread_id=message_thread_id)
                 del pending[key]
             elif message_text == "No":
-                res = send_message(chat_id, "Please choose another movie.", message_thread_id=message_thread_id, force_reply=True)
-                pending[key] = {"command": "/choosemovie", "prompt_id": res["message_id"], "expiry": time.time() + expiry_time}
+                if p["type"] == "movie":
+                    reply_keyboard = {"keyboard": [["Yes", "No", "Cancel"]], "one_time_keyboard": True, "resize_keyboard": True}
+                    next_index = p.get("suggestion_index", 0) + 1
+                    next_pending = send_movie_confirmation(
+                        chat_id,
+                        message_thread_id,
+                        p["movie"],
+                        p.get("suggestions", []),
+                        next_index,
+                        p["user_name"],
+                        reply_keyboard,
+                        expiry_time
+                    )
+                    if next_pending:
+                        pending[key] = next_pending
+                    else:
+                        res = send_message(chat_id, "No more matches found. Try adding the year, like How to Train Your Dragon 2010.", message_thread_id=message_thread_id, force_reply=True)
+                        pending[key] = {"command": "/choosemovie", "prompt_id": res["message_id"], "expiry": time.time() + expiry_time}
+                else:
+                    res = send_message(chat_id, "Please choose another movie.", message_thread_id=message_thread_id, force_reply=True)
+                    pending[key] = {"command": "/choosemovie", "prompt_id": res["message_id"], "expiry": time.time() + expiry_time}
             elif message_text == "Cancel":
                 send_message(chat_id, "Cancelled.", message_thread_id=message_thread_id)
                 del pending[key]
@@ -467,30 +548,22 @@ def update_handler(update):
             except Exception:
                 try:
                     # Fall back to movie path.
-                    from utils.movie_utils import _get_imdb_suggestion
-                    suggestion = _get_imdb_suggestion(movie)
-                    if not suggestion:
+                    suggestions = get_imdb_suggestions(movie)
+                    if not suggestions:
                         raise ValueError("Movie not found.")
-                    resolved_title = suggestion["l"]
-                    image = (suggestion.get("i") or {}).get("imageUrl")
-                    if not image:
-                        raise ValueError("No poster found.")
-                    rating = get_imdb_rating(resolved_title)
-                    genre = get_movie_genre(resolved_title)
-                    runtime = get_movie_runtime(resolved_title)
-                    if runtime:
-                        hrs, mins = divmod(runtime, 60)
-                        if hrs and mins:
-                            runtime_str = f"{hrs} hr{'s' if hrs > 1 else ''} {mins} min{'s' if mins > 1 else ''}"
-                        elif hrs:
-                            runtime_str = f"{hrs} hr{'s' if hrs > 1 else ''}"
-                        else:
-                            runtime_str = f"{mins} min{'s' if mins > 1 else ''}"
-                    else:
-                        runtime_str = "N/A"
-                    caption = f"<b>{resolved_title} ({rating if rating is not None else 'N/A'})</b>\n<b>Genre:</b> {genre or 'N/A'}\n<b>Runtime:</b> {runtime_str}"
-                    send_photo(chat_id, image, caption=caption, message_thread_id=message_thread_id, reply_markup=reply_keyboard, parse_mode="HTML")
-                    pending[key] = {"command": "/choosemovie_confirm", "type": "movie", "movie": movie, "resolved_title": resolved_title, "movie_id": suggestion["id"], "image": image, "rating": rating, "genre": genre, "runtime": runtime, "user_name": user_name, "expiry": time.time() + expiry_time}
+                    next_pending = send_movie_confirmation(
+                        chat_id,
+                        message_thread_id,
+                        movie,
+                        suggestions,
+                        0,
+                        user_name,
+                        reply_keyboard,
+                        expiry_time
+                    )
+                    if not next_pending:
+                        raise ValueError("No movie poster found.")
+                    pending[key] = next_pending
                 except Exception as e:
                     print(f"Error processing movie choice '{movie}': {e}")
                     res = send_message(chat_id, "Error processing movie choice. Please try again.", message_thread_id=message_thread_id, reply_to_message_id=message_id)

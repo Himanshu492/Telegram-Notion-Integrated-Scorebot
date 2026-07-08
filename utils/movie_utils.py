@@ -21,10 +21,10 @@ _BROWSER_HEADERS = {
 
 
 # ----- MOVIE UTILITIES -----
-def _get_imdb_suggestion(title):
+def get_imdb_suggestions(title, limit=5):
     title = (title or "").strip().lower()
     if not title:
-        return None
+        return []
 
     first_char = title[0]
     slug = quote(title)
@@ -33,11 +33,18 @@ def _get_imdb_suggestion(title):
         response = session.get(imdb_url, timeout=3)
         response.raise_for_status()
         data = response.json()
-        for item in data.get("d", []):
-            if item.get("id", "").startswith("tt"):
-                return item
+        suggestions = [
+            item for item in data.get("d", [])
+            if item.get("id", "").startswith("tt")
+        ]
+        return suggestions[:limit]
     except (requests.RequestException, ValueError):
-        return None
+        return []
+
+
+def _get_imdb_suggestion(title):
+    suggestions = get_imdb_suggestions(title, limit=1)
+    return suggestions[0] if suggestions else None
 
 
 def _get_imdb_image_for_title(title):
@@ -71,12 +78,7 @@ def get_movie_name_from_id(movie_id):
     return None
 
 
-def get_imdb_rating(movie_title):
-    title = (movie_title or "").strip()
-    if not title:
-        return None
-
-    title_id = _get_imdb_title_id(title)
+def get_imdb_rating_by_id(title_id, movie_title=None):
     if not title_id:
         return None
 
@@ -88,7 +90,8 @@ def get_imdb_rating(movie_title):
         response.raise_for_status()
         data = response.json()
     except requests.RequestException as e:
-        print(f"Error fetching IMDb rating for {movie_title}: {e}")
+        label = movie_title or title_id
+        print(f"Error fetching IMDb rating for {label}: {e}")
         return None
 
     if not data:
@@ -97,12 +100,16 @@ def get_imdb_rating(movie_title):
     return data[0].get("rating")
 
 
-def get_movie_runtime(movie_title):
+def get_imdb_rating(movie_title):
     title = (movie_title or "").strip()
     if not title:
         return None
 
     title_id = _get_imdb_title_id(title)
+    return get_imdb_rating_by_id(title_id, movie_title)
+
+
+def get_movie_runtime_by_id(title_id, movie_title=None):
     if not title_id:
         return None
 
@@ -117,13 +124,23 @@ def get_movie_runtime(movie_title):
         response.raise_for_status()
         bindings = response.json()["results"]["bindings"]
     except (requests.RequestException, KeyError, ValueError) as e:
-        print(f"Error fetching runtime for {movie_title}: {e}")
+        label = movie_title or title_id
+        print(f"Error fetching runtime for {label}: {e}")
         return None
 
     if bindings:
         return int(bindings[0]["duration"]["value"])
 
     return None
+
+
+def get_movie_runtime(movie_title):
+    title = (movie_title or "").strip()
+    if not title:
+        return None
+
+    title_id = _get_imdb_title_id(title)
+    return get_movie_runtime_by_id(title_id, movie_title)
 
 
 def get_movie_image_url(movie_title):
@@ -204,10 +221,10 @@ def add_page_to_movies(movie, person, queued="Not Queued", prefetched=None):
     return response_data.get("id")
 
 
-def check_movie_database(movie_name):
+def check_movie_database(movie_name, movie_id=None):
     from utils.database_utils import MOVIE_DATA_SOURCE_ID
 
-    movie_id = _get_imdb_title_id(movie_name)
+    movie_id = movie_id or _get_imdb_title_id(movie_name)
     url = f"{DATA_SOURCE_END_POINT}{MOVIE_DATA_SOURCE_ID}/query"
     if movie_id:
         payload = {
@@ -288,10 +305,10 @@ def check_oldest_queued():
     return None
 
 
-def change_queued_status(movie_name, new_status):
+def change_queued_status(movie_name, new_status, movie_id=None):
     from utils.database_utils import MOVIE_DATA_SOURCE_ID
 
-    movie_id = _get_imdb_title_id(movie_name)
+    movie_id = movie_id or _get_imdb_title_id(movie_name)
     url = f"{DATA_SOURCE_END_POINT}{MOVIE_DATA_SOURCE_ID}/query"
     if movie_id:
         payload = {
