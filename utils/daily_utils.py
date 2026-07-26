@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from utils.time_utils import *
 from utils.database_utils import *
 import dotenv
@@ -7,6 +8,21 @@ dotenv.load_dotenv()
 player_1 = os.getenv("PLAYER_1")
 player_2 = os.getenv("PLAYER_2")
 games = ["globle", "connections", "echo_chess", "wordle"]
+
+# ----- PER-PLAYER TIMEZONES -----
+# Swap PLAYER_1_TZ / PLAYER_2_TZ in .env when either player relocates; no code changes needed.
+PLAYER_TZ = {
+    player_1: ZoneInfo(os.getenv("PLAYER_1_TZ", "Asia/Singapore")),
+    player_2: ZoneInfo(os.getenv("PLAYER_2_TZ", "Asia/Singapore")),
+}
+
+
+def get_player_timezone(name):
+    return PLAYER_TZ.get(name, DEFAULT_TZ)
+
+
+def get_player_date_now(name, day=False, date_format=date_format):
+    return get_date_now(get_player_timezone(name), day=day, date_format=date_format)
 
 # ----- DAY AND WEEK UTILITIES -----
 

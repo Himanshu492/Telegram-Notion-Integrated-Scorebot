@@ -3,7 +3,8 @@ import requests
 from PIL import Image
 from io import BytesIO
 from config import *
-from utils.time_utils import get_date_yesterday, get_date_now, get_time_now, notion_date_format
+from datetime import datetime
+from utils.time_utils import get_date_yesterday, get_date_now, get_time_now, notion_date_format, date_format
 from utils.database_utils import *
 from utils.daily_utils import *
 from utils.movie_utils import *
@@ -304,30 +305,32 @@ def update_handler(update):
             try:
                 score = connections_logic(message_text)[0]
                 total_tries = connections_logic(message_text)[1]
-                if not if_exists(scores, get_date_now(), user_name, "connections"):
-                    page_id_connections = add_page_to_scores(SCORES_DATA_SOURCE_ID, 
-                                                             get_date_now(date_format=notion_date_format), 
+                submission_date = get_player_date_now(user_name)
+                notion_date = datetime.strptime(submission_date, date_format).strftime(notion_date_format)
+                if not if_exists(scores, submission_date, user_name, "connections"):
+                    page_id_connections = add_page_to_scores(SCORES_DATA_SOURCE_ID,
+                                                             notion_date,
                                                              user_name, "connections", score, tries=total_tries)
-                    insert_record({"name": user_name, "game": "connections", "score": [score, total_tries], "date": get_date_now(), "page_id": page_id_connections}, scores)
-                    
+                    insert_record({"name": user_name, "game": "connections", "score": [score, total_tries], "date": submission_date, "page_id": page_id_connections}, scores)
+
                     if score == 4:
                         message = f"{user_name}'s Connections score is: {score} ({total_tries} tries)"
                     else:
                         message = f"{user_name}'s Connections score is: {score}"
-                    send_message(chat_id, message, 
+                    send_message(chat_id, message,
                                     message_thread_id=message_thread_id, reply_to_message_id=message_id)
                 else:
-                    update_record(scores, get_date_now(), user_name, [score, total_tries], "connections")
+                    update_record(scores, submission_date, user_name, [score, total_tries], "connections")
                     if score == 4:
                         message = f"{user_name}'s Connections score updated to: {score} ({total_tries} tries)"
                     else:
                         message = f"{user_name}'s Connections score updated to: {score}"
-                    send_message(chat_id, message, 
+                    send_message(chat_id, message,
                                     message_thread_id=message_thread_id, reply_to_message_id=message_id)
-                    page_id = get_page_id(scores, get_date_now(), user_name, "connections")
+                    page_id = get_page_id(scores, submission_date, user_name, "connections")
                     update_page_in_scores(page_id, score, tries=total_tries)
-                
-                update_page_in_day(user_name, get_date_now(date_format=notion_date_format), connections_score=score, connections_tries=total_tries)
+
+                update_page_in_day(user_name, notion_date, connections_score=score, connections_tries=total_tries)
                 del pending[key]
             except Exception as e:
                 res = send_message(chat_id, "Invalid input. Please try again.", 
@@ -360,23 +363,25 @@ def update_handler(update):
 
                 # pass the in-memory buffer to globle_logic (it will open it with PIL)
                 tries = globle_logic(buf)
-                if not if_exists(scores, get_date_now(), user_name, "globle"):
-                    page_id_globle = add_page_to_scores(SCORES_DATA_SOURCE_ID, 
-                                                        get_date_now(date_format=notion_date_format), 
+                submission_date = get_player_date_now(user_name)
+                notion_date = datetime.strptime(submission_date, date_format).strftime(notion_date_format)
+                if not if_exists(scores, submission_date, user_name, "globle"):
+                    page_id_globle = add_page_to_scores(SCORES_DATA_SOURCE_ID,
+                                                        notion_date,
                                                         user_name, "globle", tries)
-                    insert_record({"name": user_name, "game": "globle", "score": tries, "date": get_date_now(), "page_id": page_id_globle}, scores)
-                    send_message(chat_id, f"{user_name}'s Globle score is: {tries} guesses", 
+                    insert_record({"name": user_name, "game": "globle", "score": tries, "date": submission_date, "page_id": page_id_globle}, scores)
+                    send_message(chat_id, f"{user_name}'s Globle score is: {tries} guesses",
                                  message_thread_id=message_thread_id, reply_to_message_id=message_id)
 
                 else:
-                    page_id = get_page_id(scores, get_date_now(), user_name, "globle")
-                    update_record(scores, get_date_now(), user_name, tries, "globle")
-                    send_message(chat_id, f"{user_name}'s Globle score is updated to: {tries} guesses", 
+                    page_id = get_page_id(scores, submission_date, user_name, "globle")
+                    update_record(scores, submission_date, user_name, tries, "globle")
+                    send_message(chat_id, f"{user_name}'s Globle score is updated to: {tries} guesses",
                                     message_thread_id=message_thread_id, reply_to_message_id=message_id)
                     update_page_in_scores(page_id, tries)
 
                 try:
-                    update_page_in_day(user_name, get_date_now(date_format=notion_date_format), globle=tries)
+                    update_page_in_day(user_name, notion_date, globle=tries)
                 except Exception as e:
                     print(f"Error updating day page for Globle: {e}")
                 del pending[key]
@@ -418,21 +423,23 @@ def update_handler(update):
 
                 # pass the in-memory buffer to echo_chess_logic (it will open it with PIL)
                 tries_taken = echo_chess_logic(buf)
-                if not if_exists(scores, get_date_now(), user_name, "echo_chess"):
-                    page_id_chess = add_page_to_scores(SCORES_DATA_SOURCE_ID, 
-                                                            get_date_now(date_format=notion_date_format), 
+                submission_date = get_player_date_now(user_name)
+                notion_date = datetime.strptime(submission_date, date_format).strftime(notion_date_format)
+                if not if_exists(scores, submission_date, user_name, "echo_chess"):
+                    page_id_chess = add_page_to_scores(SCORES_DATA_SOURCE_ID,
+                                                            notion_date,
                                                             user_name, "echo_chess", tries_taken)
-                    insert_record({"name": user_name, "game": "echo_chess", "score": tries_taken, "date": get_date_now(), "page_id": page_id_chess}, scores)
-                    send_message(chat_id, f"{user_name}'s Echo Chess tries taken: {tries_taken}", 
+                    insert_record({"name": user_name, "game": "echo_chess", "score": tries_taken, "date": submission_date, "page_id": page_id_chess}, scores)
+                    send_message(chat_id, f"{user_name}'s Echo Chess tries taken: {tries_taken}",
                                  message_thread_id=message_thread_id, reply_to_message_id=message_id)
                 else:
-                    page_id = get_page_id(scores, get_date_now(), user_name, "echo_chess")
-                    update_record(scores, get_date_now(), user_name, tries_taken, "echo_chess")
-                    send_message(chat_id, f"{user_name}'s Echo Chess tries taken updated to: {tries_taken}", 
+                    page_id = get_page_id(scores, submission_date, user_name, "echo_chess")
+                    update_record(scores, submission_date, user_name, tries_taken, "echo_chess")
+                    send_message(chat_id, f"{user_name}'s Echo Chess tries taken updated to: {tries_taken}",
                                 message_thread_id=message_thread_id, reply_to_message_id=message_id)
                     update_page_in_scores(page_id, tries_taken)
 
-                update_page_in_day(user_name, get_date_now(date_format=notion_date_format), echo_chess=tries_taken)
+                update_page_in_day(user_name, notion_date, echo_chess=tries_taken)
                 del pending[key]
             except Exception as e:
                 res = send_message(chat_id, "Invalid image or unreadable tries. Please send a clear image of your Echo Chess result.", 
@@ -452,21 +459,23 @@ def update_handler(update):
         if pending[key]["command"] == "/wordle":
             try:
                 score = wordle_logic(message_text)
-                if not if_exists(scores, get_date_now(), user_name, "wordle"):
-                    page_id_wordle = add_page_to_scores(SCORES_DATA_SOURCE_ID, 
-                                                            get_date_now(date_format=notion_date_format), 
+                submission_date = get_player_date_now(user_name)
+                notion_date = datetime.strptime(submission_date, date_format).strftime(notion_date_format)
+                if not if_exists(scores, submission_date, user_name, "wordle"):
+                    page_id_wordle = add_page_to_scores(SCORES_DATA_SOURCE_ID,
+                                                            notion_date,
                                                             user_name, "wordle", score)
-                    insert_record({"name": user_name, "game": "wordle", "score": score, "date": get_date_now(), "page_id": page_id_wordle}, scores)
+                    insert_record({"name": user_name, "game": "wordle", "score": score, "date": submission_date, "page_id": page_id_wordle}, scores)
                     send_message(chat_id, f"{user_name}'s Wordle score is: {score}",
                                  message_thread_id=message_thread_id, reply_to_message_id=message_id)
                 else:
-                    page_id = get_page_id(scores, get_date_now(), user_name, "wordle")
-                    update_record(scores, get_date_now(), user_name, score, "wordle")
+                    page_id = get_page_id(scores, submission_date, user_name, "wordle")
+                    update_record(scores, submission_date, user_name, score, "wordle")
                     send_message(chat_id, f"{user_name}'s Wordle score updated to: {score}",
                                  message_thread_id=message_thread_id, reply_to_message_id=message_id)
                     update_page_in_scores(page_id, score)
-                
-                update_page_in_day(user_name, get_date_now(date_format=notion_date_format), wordle=score)
+
+                update_page_in_day(user_name, notion_date, wordle=score)
                 del pending[key]
                 
             except Exception as e:
@@ -616,48 +625,52 @@ def update_handler(update):
         return
     
     if message_text == "/checkwordle@silverlining12bot":
-        score = get_score(get_date_now(), user_name, "wordle")
+        check_date = get_player_date_now(user_name)
+        score = get_score(check_date, user_name, "wordle")
         if score:
             score = int(score)
-            send_message(chat_id, f"{user_name}'s Wordle score for {get_date_now()} is {score}", 
+            send_message(chat_id, f"{user_name}'s Wordle score for {check_date} is {score}",
                         message_thread_id=message_thread_id)
         else:
-            send_message(chat_id, f"{user_name} has no Wordle score for {get_date_now()}", 
+            send_message(chat_id, f"{user_name} has no Wordle score for {check_date}",
                         message_thread_id=message_thread_id)
-        return  
+        return
 
     if message_text == "/checkechochess@silverlining12bot":
-        score = get_score(get_date_now(), user_name, "echo_chess")
+        check_date = get_player_date_now(user_name)
+        score = get_score(check_date, user_name, "echo_chess")
         if score:
             score = int(score)
-            send_message(chat_id, f"{user_name}'s Echo Chess score for {get_date_now()} is {score}", 
+            send_message(chat_id, f"{user_name}'s Echo Chess score for {check_date} is {score}",
                         message_thread_id=message_thread_id)
         else:
-            send_message(chat_id, f"{user_name} has no Echo Chess score for {get_date_now()}", 
+            send_message(chat_id, f"{user_name} has no Echo Chess score for {check_date}",
                         message_thread_id=message_thread_id)
         return
 
     if message_text == "/checkconnections@silverlining12bot":
-        score = get_score(get_date_now(), user_name, "connections")
+        check_date = get_player_date_now(user_name)
+        score = get_score(check_date, user_name, "connections")
         if score:
             score = list(map(int, score))
             if score[1] == 4:
-                send_message(chat_id, f"{user_name}'s Connections score for {get_date_now()} is {score[0]} (Total Tries: {score[1]})", message_thread_id=message_thread_id)
+                send_message(chat_id, f"{user_name}'s Connections score for {check_date} is {score[0]} (Total Tries: {score[1]})", message_thread_id=message_thread_id)
             else:
-                send_message(chat_id, f"{user_name}'s Connections score for {get_date_now()} is {score}", message_thread_id=message_thread_id)
+                send_message(chat_id, f"{user_name}'s Connections score for {check_date} is {score}", message_thread_id=message_thread_id)
         else:
-            send_message(chat_id, f"{user_name} has no Connections score for {get_date_now()}", 
+            send_message(chat_id, f"{user_name} has no Connections score for {check_date}",
                         message_thread_id=message_thread_id)
         return
 
     if message_text == "/checkgloble@silverlining12bot":
-        score = get_score(get_date_now(), user_name, "globle")
+        check_date = get_player_date_now(user_name)
+        score = get_score(check_date, user_name, "globle")
         if score:
             score = int(score)
-            send_message(chat_id, f"{user_name}'s Globle score for {get_date_now()} is {score} guesses", 
+            send_message(chat_id, f"{user_name}'s Globle score for {check_date} is {score} guesses",
                         message_thread_id=message_thread_id)
         else:
-            send_message(chat_id, f"{user_name} has no Globle score for {get_date_now()}", 
+            send_message(chat_id, f"{user_name} has no Globle score for {check_date}",
                         message_thread_id=message_thread_id)
         return
     
@@ -696,26 +709,39 @@ def main():
         for key in keys_to_delete:
             del pending[key]
 
-        # Send daily summary at 00:00 only once per day
-        if get_time_now() == "00:00":
-            yesterday = get_date_yesterday()
-            today = get_date_now(date_format=notion_date_format)
+        # Ensure a Notion "day" page exists for each player's current local date
+        for name in (player_1, player_2):
+            tz = get_player_timezone(name)
+            today_notion = get_date_now(tz, date_format=notion_date_format)
+            if not find_page_id_by_date_and_name(DAY_DATA_SOURCE_ID, today_notion):
+                add_page_to_day(today_notion)
 
-            if not if_exists(daily_winners, yesterday):
-                summary = generate_daily_summary(yesterday)
+        # A date is "settled" (both players' local days for it have ended) once
+        # neither player's current local date still equals that date. Fire the
+        # daily/weekly summary for a date the moment it becomes settled - this
+        # naturally happens at whichever player's midnight comes later.
+        for name in (player_1, player_2):
+            tz = get_player_timezone(name)
+            if get_time_now(tz) != "00:00":
+                continue
+
+            closed_date = get_date_yesterday(tz)
+            other = player_2 if name == player_1 else player_1
+            other_tz = get_player_timezone(other)
+            if get_date_now(other_tz) == closed_date:
+                # the other player is still inside closed_date; not settled yet
+                continue
+
+            if not if_exists(daily_winners, closed_date):
+                summary = generate_daily_summary(closed_date)
                 summary_chat_id = -1002538310918
                 send_message(summary_chat_id, summary)
 
-            if not find_page_id_by_date_and_name(DAY_DATA_SOURCE_ID, today):
-                add_page_to_day(today)
-
-        # Send weekly summary at 00:00 on Mondays only once per week
-        if get_time_now() == "00:00" and get_date_now(True) == "Monday":
-            end_date = get_date_yesterday()
-            if not if_exists(weekly_winners, end_date):
-                weekly_summary = generate_weekly_summary(end_date)
-                weekly_summary_chat_id = -1002538310918
-                send_message(weekly_summary_chat_id, weekly_summary)
+            if datetime.strptime(closed_date, date_format).strftime("%A") == "Sunday":
+                if not if_exists(weekly_winners, closed_date):
+                    weekly_summary = generate_weekly_summary(closed_date)
+                    weekly_summary_chat_id = -1002538310918
+                    send_message(weekly_summary_chat_id, weekly_summary)
 
         time.sleep(1)
 
