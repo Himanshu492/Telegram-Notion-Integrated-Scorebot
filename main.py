@@ -314,17 +314,17 @@ def update_handler(update):
                     insert_record({"name": user_name, "game": "connections", "score": [score, total_tries], "date": submission_date, "page_id": page_id_connections}, scores)
 
                     if score == 4:
-                        message = f"{user_name}'s Connections score is: {score} ({total_tries} tries)"
+                        message = f"{user_name}'s Connections score is: {score} ({total_tries} tries) (date: {submission_date})"
                     else:
-                        message = f"{user_name}'s Connections score is: {score}"
+                        message = f"{user_name}'s Connections score is: {score} (date: {submission_date})"
                     send_message(chat_id, message,
                                     message_thread_id=message_thread_id, reply_to_message_id=message_id)
                 else:
                     update_record(scores, submission_date, user_name, [score, total_tries], "connections")
                     if score == 4:
-                        message = f"{user_name}'s Connections score updated to: {score} ({total_tries} tries)"
+                        message = f"{user_name}'s Connections score updated to: {score} ({total_tries} tries) (date: {submission_date})"
                     else:
-                        message = f"{user_name}'s Connections score updated to: {score}"
+                        message = f"{user_name}'s Connections score updated to: {score} (date: {submission_date})"
                     send_message(chat_id, message,
                                     message_thread_id=message_thread_id, reply_to_message_id=message_id)
                     page_id = get_page_id(scores, submission_date, user_name, "connections")
@@ -370,13 +370,13 @@ def update_handler(update):
                                                         notion_date,
                                                         user_name, "globle", tries)
                     insert_record({"name": user_name, "game": "globle", "score": tries, "date": submission_date, "page_id": page_id_globle}, scores)
-                    send_message(chat_id, f"{user_name}'s Globle score is: {tries} guesses",
+                    send_message(chat_id, f"{user_name}'s Globle score is: {tries} guesses (date: {submission_date})",
                                  message_thread_id=message_thread_id, reply_to_message_id=message_id)
 
                 else:
                     page_id = get_page_id(scores, submission_date, user_name, "globle")
                     update_record(scores, submission_date, user_name, tries, "globle")
-                    send_message(chat_id, f"{user_name}'s Globle score is updated to: {tries} guesses",
+                    send_message(chat_id, f"{user_name}'s Globle score is updated to: {tries} guesses (date: {submission_date})",
                                     message_thread_id=message_thread_id, reply_to_message_id=message_id)
                     update_page_in_scores(page_id, tries)
 
@@ -430,12 +430,12 @@ def update_handler(update):
                                                             notion_date,
                                                             user_name, "echo_chess", tries_taken)
                     insert_record({"name": user_name, "game": "echo_chess", "score": tries_taken, "date": submission_date, "page_id": page_id_chess}, scores)
-                    send_message(chat_id, f"{user_name}'s Echo Chess tries taken: {tries_taken}",
+                    send_message(chat_id, f"{user_name}'s Echo Chess tries taken: {tries_taken} (date: {submission_date})",
                                  message_thread_id=message_thread_id, reply_to_message_id=message_id)
                 else:
                     page_id = get_page_id(scores, submission_date, user_name, "echo_chess")
                     update_record(scores, submission_date, user_name, tries_taken, "echo_chess")
-                    send_message(chat_id, f"{user_name}'s Echo Chess tries taken updated to: {tries_taken}",
+                    send_message(chat_id, f"{user_name}'s Echo Chess tries taken updated to: {tries_taken} (date: {submission_date})",
                                 message_thread_id=message_thread_id, reply_to_message_id=message_id)
                     update_page_in_scores(page_id, tries_taken)
 
@@ -466,12 +466,12 @@ def update_handler(update):
                                                             notion_date,
                                                             user_name, "wordle", score)
                     insert_record({"name": user_name, "game": "wordle", "score": score, "date": submission_date, "page_id": page_id_wordle}, scores)
-                    send_message(chat_id, f"{user_name}'s Wordle score is: {score}",
+                    send_message(chat_id, f"{user_name}'s Wordle score is: {score} (date: {submission_date})",
                                  message_thread_id=message_thread_id, reply_to_message_id=message_id)
                 else:
                     page_id = get_page_id(scores, submission_date, user_name, "wordle")
                     update_record(scores, submission_date, user_name, score, "wordle")
-                    send_message(chat_id, f"{user_name}'s Wordle score updated to: {score}",
+                    send_message(chat_id, f"{user_name}'s Wordle score updated to: {score} (date: {submission_date})",
                                  message_thread_id=message_thread_id, reply_to_message_id=message_id)
                     update_page_in_scores(page_id, score)
 
