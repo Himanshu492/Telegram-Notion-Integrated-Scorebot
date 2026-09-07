@@ -353,10 +353,12 @@ def change_queued_status(movie_name, new_status, movie_id=None):
     return False
 
 
-def check_current_winner():
+def check_current_winner(user_name=None):
     from utils.database_utils import find_record
+    from utils.daily_utils import get_player_timezone
 
-    date = get_last_sunday_date()
+    tz = get_player_timezone(user_name) if user_name else DEFAULT_TZ
+    date = get_last_sunday_date(tz)
     record = find_record(weekly_winners, date)
     if record:
         return record["winner"]

@@ -675,7 +675,7 @@ def update_handler(update):
         return
     
     if message_text == "/choosemovie@silverlining12bot":
-        current_winner = check_current_winner()
+        current_winner = check_current_winner(user_name)
         if current_winner and (current_winner == user_name or current_winner == "Tie"):
             send_message(chat_id, "Please choose a movie for this week", message_thread_id=message_thread_id, reply_to_message_id=message_id, force_reply=True)
             pending[key] = {
