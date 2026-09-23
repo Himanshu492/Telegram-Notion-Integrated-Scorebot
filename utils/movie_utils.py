@@ -167,7 +167,7 @@ def get_movie_genre(movie_title):
     
 
 def add_page_to_movies(movie, person, queued="Not Queued", prefetched=None):
-    from utils.database_utils import MOVIE_DATA_SOURCE_ID
+    from utils.database_utils import data_source_id_for, data_source_query_url
 
     if prefetched:
         movie_id = prefetched["movie_id"]
@@ -191,7 +191,7 @@ def add_page_to_movies(movie, person, queued="Not Queued", prefetched=None):
     new_page = {
         "parent": {
             "type": "data_source_id",
-            "data_source_id": MOVIE_DATA_SOURCE_ID
+            "data_source_id": data_source_id_for(MOVIES_NOTION)
         },
         "properties": {
             "Cover": {"files": [{
@@ -222,10 +222,10 @@ def add_page_to_movies(movie, person, queued="Not Queued", prefetched=None):
 
 
 def check_movie_database(movie_name, movie_id=None):
-    from utils.database_utils import MOVIE_DATA_SOURCE_ID
+    from utils.database_utils import data_source_id_for, data_source_query_url
 
     movie_id = movie_id or _get_imdb_title_id(movie_name)
-    url = f"{DATA_SOURCE_END_POINT}{MOVIE_DATA_SOURCE_ID}/query"
+    url = data_source_query_url(MOVIES_NOTION)
     if movie_id:
         payload = {
             "filter": {
@@ -254,9 +254,9 @@ def check_movie_database(movie_name, movie_id=None):
 
 
 def check_no_queued():
-    from utils.database_utils import MOVIE_DATA_SOURCE_ID
+    from utils.database_utils import data_source_id_for, data_source_query_url
 
-    url = f"{DATA_SOURCE_END_POINT}{MOVIE_DATA_SOURCE_ID}/query"
+    url = data_source_query_url(MOVIES_NOTION)
     payload = {
         "filter": {
             "property": "Queued",
@@ -276,9 +276,9 @@ def check_no_queued():
 
 
 def check_oldest_queued():
-    from utils.database_utils import MOVIE_DATA_SOURCE_ID
+    from utils.database_utils import data_source_id_for, data_source_query_url
 
-    url = f"{DATA_SOURCE_END_POINT}{MOVIE_DATA_SOURCE_ID}/query"
+    url = data_source_query_url(MOVIES_NOTION)
     payload = {
         "filter": {
             "property": "Queued",
@@ -306,10 +306,10 @@ def check_oldest_queued():
 
 
 def change_queued_status(movie_name, new_status, movie_id=None):
-    from utils.database_utils import MOVIE_DATA_SOURCE_ID
+    from utils.database_utils import data_source_id_for, data_source_query_url
 
     movie_id = movie_id or _get_imdb_title_id(movie_name)
-    url = f"{DATA_SOURCE_END_POINT}{MOVIE_DATA_SOURCE_ID}/query"
+    url = data_source_query_url(MOVIES_NOTION)
     if movie_id:
         payload = {
             "filter": {
@@ -484,14 +484,14 @@ def get_youtube_runtime(youtube_url):
 
 
 def add_video_page_to_movies(url, image, title, person, queued="Not Queued"):
-    from utils.database_utils import MOVIE_DATA_SOURCE_ID
+    from utils.database_utils import data_source_id_for, data_source_query_url
 
     runtime = get_youtube_runtime(url)
 
     video_page = {
         "parent": {
             "type": "data_source_id",
-            "data_source_id": MOVIE_DATA_SOURCE_ID
+            "data_source_id": data_source_id_for(MOVIES_NOTION)
         },
         "properties": {
             "Cover": {"files": [{

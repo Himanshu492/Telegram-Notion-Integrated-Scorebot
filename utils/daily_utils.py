@@ -43,17 +43,17 @@ def daily_patching(date):
         if game  == "connections":
             if not if_exists(scores, date, player_1, game):
                 insert_record({"name": player_1, "game": game, "score": [-1, -1], "date": date}, scores)
-                add_page_to_scores(SCORES_DATA_SOURCE_ID, reversed_date, player_1, game, 0, 0)
+                add_page_to_scores(reversed_date, player_1, game, 0, 0)
             if not if_exists(scores, date, player_2, game):
                 insert_record({"name": player_2, "game": game, "score": [-1, -1], "date": date}, scores)
-                add_page_to_scores(SCORES_DATA_SOURCE_ID, reversed_date, player_2, game, 0, 0)
+                add_page_to_scores(reversed_date, player_2, game, 0, 0)
         else:
             if not if_exists(scores, date, player_1, game):
                 insert_record({"name": player_1, "game": game, "score": 1234, "date": date}, scores)
-                add_page_to_scores(SCORES_DATA_SOURCE_ID, reversed_date, player_1, game, 0)
+                add_page_to_scores(reversed_date, player_1, game, 0)
             if not if_exists(scores, date, player_2, game):
                 insert_record({"name": player_2, "game": game, "score": 1234, "date": date}, scores)
-                add_page_to_scores(SCORES_DATA_SOURCE_ID, reversed_date, player_2, game, 0)
+                add_page_to_scores(reversed_date, player_2, game, 0)
 
 
 # sorts a LIST of records by the 'name' field
@@ -154,7 +154,7 @@ def generate_daily_summary(date):
 
     insert_record({"date": date, "winner": winner, "score": result}, daily_winners)
     reversed_date = datetime.strptime(date, date_format).strftime(notion_date_format)
-    add_page_to_daily_winners(DAILY_WINNERS_DATA_SOURCE_ID, reversed_date, winner, a_total, h_total)
+    add_page_to_daily_winners(reversed_date, winner, a_total, h_total)
 
     return summary
 
@@ -221,7 +221,7 @@ def generate_weekly_summary(end_date):
                    "score": (a_wins, h_wins), "overall_diff": overall_diff}, weekly_winners)
     
     reversed_end_date = datetime.strptime(week_dates[0], date_format).strftime(notion_date_format)
-    add_page_to_weekly_winners(WEEKLY_WINNERS_DATA_SOURCE_ID, reversed_end_date, winner, a_wins, h_wins, overall_diff)
+    add_page_to_weekly_winners(reversed_end_date, winner, a_wins, h_wins, overall_diff)
 
     return summary
 

@@ -1,4 +1,5 @@
 import time
+import traceback
 import requests
 from PIL import Image
 from io import BytesIO
@@ -302,14 +303,15 @@ def update_handler(update):
     key = (chat_id, user_id, message_thread_id)
     if key in pending:
         if pending[key]["command"] == "/connections":
+            stage = "parse"
             try:
                 score = connections_logic(message_text)[0]
                 total_tries = connections_logic(message_text)[1]
+                stage = "store"
                 submission_date = get_player_date_now(user_name)
                 notion_date = datetime.strptime(submission_date, date_format).strftime(notion_date_format)
                 if not if_exists(scores, submission_date, user_name, "connections"):
-                    page_id_connections = add_page_to_scores(SCORES_DATA_SOURCE_ID,
-                                                             notion_date,
+                    page_id_connections = add_page_to_scores(notion_date,
                                                              user_name, "connections", score, tries=total_tries)
                     insert_record({"name": user_name, "game": "connections", "score": [score, total_tries], "date": submission_date, "page_id": page_id_connections}, scores)
 
@@ -333,14 +335,21 @@ def update_handler(update):
                 update_page_in_day(user_name, notion_date, connections_score=score, connections_tries=total_tries)
                 del pending[key]
             except Exception as e:
-                res = send_message(chat_id, "Invalid input. Please try again.", 
-                                   message_thread_id=message_thread_id, 
+                print(f"[connections] {stage} failed: {type(e).__name__}: {e}")
+                traceback.print_exc()
+                if stage == "parse":
+                    message = "Invalid input. Please try again."
+                else:
+                    message = "Could not save your Connections score (server side issue). Please try again in a minute."
+                res = send_message(chat_id, message,
+                                   message_thread_id=message_thread_id,
                                    reply_to_message_id=message_id, force_reply=True)
                 pending[key]["prompt_id"] = res["message_id"]
                 pending[key]["expiry"] = time.time() + expiry_time
             return
         
         if pending[key]["command"] == "/globle":
+            stage = "download"
             try:
                 # download the file from Telegram but do NOT save to disk; use an in-memory buffer
                 file_id = update["message"]["photo"][-1]["file_id"]
@@ -362,12 +371,13 @@ def update_handler(update):
                 buf.seek(0)
 
                 # pass the in-memory buffer to globle_logic (it will open it with PIL)
+                stage = "parse"
                 tries = globle_logic(buf)
+                stage = "store"
                 submission_date = get_player_date_now(user_name)
                 notion_date = datetime.strptime(submission_date, date_format).strftime(notion_date_format)
                 if not if_exists(scores, submission_date, user_name, "globle"):
-                    page_id_globle = add_page_to_scores(SCORES_DATA_SOURCE_ID,
-                                                        notion_date,
+                    page_id_globle = add_page_to_scores(notion_date,
                                                         user_name, "globle", tries)
                     insert_record({"name": user_name, "game": "globle", "score": tries, "date": submission_date, "page_id": page_id_globle}, scores)
                     send_message(chat_id, f"{user_name}'s Globle score is: {tries} guesses (date: {submission_date})",
@@ -386,21 +396,21 @@ def update_handler(update):
                     print(f"Error updating day page for Globle: {e}")
                 del pending[key]
             except Exception as e:
-                res = send_message(chat_id, "Invalid image or unreadable time. Please send a clear image of your Globle result.", 
-                                   message_thread_id=message_thread_id, 
-                                   reply_to_message_id=message_id, force_reply=True)
-                pending[key]["prompt_id"] = res["message_id"]
-                pending[key]["expiry"] = time.time() + expiry_time
-            except Exception:
-                # treat network / decoding errors as invalid image input
-                res = send_message(chat_id, "Could not process image. Please try again.", 
-                                   message_thread_id=message_thread_id, 
+                print(f"[globle] {stage} failed: {type(e).__name__}: {e}")
+                traceback.print_exc()
+                if stage in ("download", "parse"):
+                    message = "Invalid image or unreadable time. Please send a clear image of your Globle result."
+                else:
+                    message = "Could not save your Globle score (server side issue). Please try again in a minute."
+                res = send_message(chat_id, message,
+                                   message_thread_id=message_thread_id,
                                    reply_to_message_id=message_id, force_reply=True)
                 pending[key]["prompt_id"] = res["message_id"]
                 pending[key]["expiry"] = time.time() + expiry_time
             return  
         
         if pending[key]["command"] == "/echo_chess":
+            stage = "download"
             try:
                 # download the file from Telegram but do NOT save to disk; use an in-memory buffer
                 file_id = update["message"]["photo"][-1]["file_id"]
@@ -422,12 +432,13 @@ def update_handler(update):
                 buf.seek(0)
 
                 # pass the in-memory buffer to echo_chess_logic (it will open it with PIL)
+                stage = "parse"
                 tries_taken = echo_chess_logic(buf)
+                stage = "store"
                 submission_date = get_player_date_now(user_name)
                 notion_date = datetime.strptime(submission_date, date_format).strftime(notion_date_format)
                 if not if_exists(scores, submission_date, user_name, "echo_chess"):
-                    page_id_chess = add_page_to_scores(SCORES_DATA_SOURCE_ID,
-                                                            notion_date,
+                    page_id_chess = add_page_to_scores(notion_date,
                                                             user_name, "echo_chess", tries_taken)
                     insert_record({"name": user_name, "game": "echo_chess", "score": tries_taken, "date": submission_date, "page_id": page_id_chess}, scores)
                     send_message(chat_id, f"{user_name}'s Echo Chess tries taken: {tries_taken} (date: {submission_date})",
@@ -442,28 +453,28 @@ def update_handler(update):
                 update_page_in_day(user_name, notion_date, echo_chess=tries_taken)
                 del pending[key]
             except Exception as e:
-                res = send_message(chat_id, "Invalid image or unreadable tries. Please send a clear image of your Echo Chess result.", 
-                                   message_thread_id=message_thread_id, 
-                                   reply_to_message_id=message_id, force_reply=True)
-                pending[key]["prompt_id"] = res["message_id"]
-                pending[key]["expiry"] = time.time() + expiry_time
-            except Exception:
-                # treat network / decoding errors as invalid image input
-                res = send_message(chat_id, "Could not process image. Please try again.", 
-                                   message_thread_id=message_thread_id, 
+                print(f"[echo_chess] {stage} failed: {type(e).__name__}: {e}")
+                traceback.print_exc()
+                if stage in ("download", "parse"):
+                    message = "Invalid image or unreadable tries. Please send a clear image of your Echo Chess result."
+                else:
+                    message = "Could not save your Echo Chess score (server side issue). Please try again in a minute."
+                res = send_message(chat_id, message,
+                                   message_thread_id=message_thread_id,
                                    reply_to_message_id=message_id, force_reply=True)
                 pending[key]["prompt_id"] = res["message_id"]
                 pending[key]["expiry"] = time.time() + expiry_time
             return
 
         if pending[key]["command"] == "/wordle":
+            stage = "parse"
             try:
                 score = wordle_logic(message_text)
+                stage = "store"
                 submission_date = get_player_date_now(user_name)
                 notion_date = datetime.strptime(submission_date, date_format).strftime(notion_date_format)
                 if not if_exists(scores, submission_date, user_name, "wordle"):
-                    page_id_wordle = add_page_to_scores(SCORES_DATA_SOURCE_ID,
-                                                            notion_date,
+                    page_id_wordle = add_page_to_scores(notion_date,
                                                             user_name, "wordle", score)
                     insert_record({"name": user_name, "game": "wordle", "score": score, "date": submission_date, "page_id": page_id_wordle}, scores)
                     send_message(chat_id, f"{user_name}'s Wordle score is: {score} (date: {submission_date})",
@@ -479,8 +490,14 @@ def update_handler(update):
                 del pending[key]
                 
             except Exception as e:
-                res = send_message(chat_id, "Invalid input. Please try again.", 
-                                   message_thread_id=message_thread_id, 
+                print(f"[wordle] {stage} failed: {type(e).__name__}: {e}")
+                traceback.print_exc()
+                if stage == "parse":
+                    message = "Invalid input. Please try again."
+                else:
+                    message = "Could not save your Wordle score (server side issue). Please try again in a minute."
+                res = send_message(chat_id, message,
+                                   message_thread_id=message_thread_id,
                                    reply_to_message_id=message_id, force_reply=True)
                 pending[key]["prompt_id"] = res["message_id"]
                 pending[key]["expiry"] = time.time() + expiry_time
@@ -713,7 +730,7 @@ def main():
         for name in (player_1, player_2):
             tz = get_player_timezone(name)
             today_notion = get_date_now(tz, date_format=notion_date_format)
-            if not find_page_id_by_date_and_name(DAY_DATA_SOURCE_ID, today_notion):
+            if not find_page_id_by_date_and_name(DAY_NOTION, today_notion):
                 add_page_to_day(today_notion)
 
         # A date is "settled" (both players' local days for it have ended) once

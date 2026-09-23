@@ -9,12 +9,59 @@ player_2 = os.getenv("PLAYER_2")
 
 # ----- NOTION UTILITIES -----
 
-def get_data_source_id(database_id):
-    url = f"{DATABASE_END_POINT}{database_id}"
+# Notion can reissue a database's data source id underneath us (it happened on
+# 2026-09-23 and took the bot down for every score submission). Nothing here is
+# allowed to trust an id that was resolved once at import: writes re-resolve on
+# retry, and every read asks for the current id.
+_DS_CACHE = {}
 
-    response = requests.get(url, headers=headers).json()
-    
-    return response["data_sources"][0]["id"]
+
+def get_data_source_id(database_id):
+    """One live lookup of a database's current data source id."""
+    response = requests.get(f"{DATABASE_END_POINT}{database_id}", headers=headers, timeout=30).json()
+    data_sources = response.get("data_sources") or []
+    if not data_sources:
+        raise RuntimeError(f"notion returned no data_sources for {database_id}: {str(response)[:300]}")
+    return data_sources[0]["id"]
+
+
+def data_source_id_for(database_id, force=False):
+    """Cached database -> data source id lookup. force=True re-resolves from notion."""
+    if force or database_id not in _DS_CACHE:
+        _DS_CACHE[database_id] = get_data_source_id(database_id)
+    return _DS_CACHE[database_id]
+
+
+def refresh_data_source_ids():
+    """Re-resolve every configured database id after a write has failed."""
+    for database_id in (SCORES_NOTION, DAILY_WINNERS_NOTION, WEEKLY_WINNERS_NOTION, MOVIES_NOTION, DAY_NOTION):
+        try:
+            data_source_id_for(database_id, force=True)
+        except Exception as e:
+            print(f"[notion] refresh failed for {database_id}: {type(e).__name__}: {e}")
+
+
+def data_source_query_url(database_id):
+    return f"{DATA_SOURCE_END_POINT}{data_source_id_for(database_id)}/query"
+
+
+def create_page_in(database_id, properties, label="page"):
+    """Create a notion page, re-resolving the data source id and retrying once."""
+    last_error = None
+    for attempt in (1, 2):
+        ds_id = data_source_id_for(database_id, force=(attempt == 2))
+        payload = {"parent": {"type": "data_source_id", "data_source_id": ds_id}, "properties": properties}
+        try:
+            response = requests.post(PAGES_END_POINT, headers=headers, data=json.dumps(payload), timeout=30)
+            body = response.json()
+        except Exception as e:
+            last_error = f"{type(e).__name__}: {e}"
+        else:
+            if isinstance(body, dict) and body.get("id"):
+                return body["id"]
+            last_error = f"http {response.status_code}: {str(body)[:300]}"
+        print(f"[notion] create {label} in {database_id} failed (attempt {attempt}): {last_error}")
+    raise RuntimeError(f"notion page create failed ({label}): {last_error}")
 
 
 def get_data_source_properties(data_source_id):
@@ -25,26 +72,18 @@ def get_data_source_properties(data_source_id):
     return response
 
 
-def add_page_to_scores(data_source_id, date, name, game, score, tries=None):
-    url = PAGES_END_POINT
-    new_page = {
-        "parent": {
-            "type": "data_source_id",
-            "data_source_id": data_source_id
-        },
-        "properties": {
-            "Date Value": {"date": {"start": date}},
-            "ID": {"title": [{"text": {"content": "Score Entry"}}]},
-            "Name": {"select": {'name': name}},
-            "Game": {"select": {'name': game}},
-            "Score": {"number": score},
-        }
+def add_page_to_scores(date, name, game, score, tries=None):
+    properties = {
+        "Date Value": {"date": {"start": date}},
+        "ID": {"title": [{"text": {"content": "Score Entry"}}]},
+        "Name": {"select": {'name': name}},
+        "Game": {"select": {'name': game}},
+        "Score": {"number": score},
     }
     if tries is not None:
-        new_page["properties"]["Tries"] = {"number": tries}
+        properties["Tries"] = {"number": tries}
 
-    response = requests.post(url, headers=headers, data=json.dumps(new_page)).json()
-    return response["id"]
+    return create_page_in(SCORES_NOTION, properties, "score")
 
 
 def update_page_in_scores(page_id, score, tries=None):
@@ -60,66 +99,42 @@ def update_page_in_scores(page_id, score, tries=None):
     return response
 
 
-def add_page_to_daily_winners(data_source_id, date, name, a, h):
-    url = PAGES_END_POINT
-    new_page = {
-        "parent": {
-            "type": "data_source_id",
-            "data_source_id": data_source_id
-        },
-        "properties": {
-            "Date": {"date": {"start": date}},
-            "ID": {"title": [{"text": {"content": "Daily Winner Entry"}}]},
-            "Winner": {"select": {'name': name}},
-            player_2: {"number": a},
-            player_1: {"number": h}
-        }
+def add_page_to_daily_winners(date, name, a, h):
+    properties = {
+        "Date": {"date": {"start": date}},
+        "ID": {"title": [{"text": {"content": "Daily Winner Entry"}}]},
+        "Winner": {"select": {'name': name}},
+        player_2: {"number": a},
+        player_1: {"number": h},
     }
 
-    response = requests.post(url, headers=headers, data=json.dumps(new_page)).json()
-    return response["id"]
+    return create_page_in(DAILY_WINNERS_NOTION, properties, "daily winner")
 
 
-def add_page_to_weekly_winners(data_source_id, date, name, a, h, difference):
-    url = PAGES_END_POINT
-    new_page = {
-        "parent": {
-            "type": "data_source_id",
-            "data_source_id": data_source_id
-        },
-        "properties": {
-            "Week End Date": {"date": {"start": date}},
-            "ID": {"title": [{"text": {"content": "Weekly Winner"}}]},
-            "Winner": {"select": {'name': name}},
-            player_2: {"number": a},
-            player_1: {"number": h},
-            "Difference": {"number": difference}
-        }
+def add_page_to_weekly_winners(date, name, a, h, difference):
+    properties = {
+        "Week End Date": {"date": {"start": date}},
+        "ID": {"title": [{"text": {"content": "Weekly Winner"}}]},
+        "Winner": {"select": {'name': name}},
+        player_2: {"number": a},
+        player_1: {"number": h},
+        "Difference": {"number": difference},
     }
 
-    response = requests.post(url, headers=headers, data=json.dumps(new_page)).json()
-    return response["id"]
+    return create_page_in(WEEKLY_WINNERS_NOTION, properties, "weekly winner")
 
 
 def add_page_to_day(date):
-    url = PAGES_END_POINT
-    new_page = {
-        "parent": {
-            "type": "data_source_id",
-            "data_source_id": DAY_DATA_SOURCE_ID
-        },
-        "properties": {
-            "Date": {"date": {"start": date}},
-            "ID": {"title": [{"text": {"content": "Record"}}]}
-        }
+    properties = {
+        "Date": {"date": {"start": date}},
+        "ID": {"title": [{"text": {"content": "Record"}}]},
     }
 
-    response = requests.post(url, headers=headers, data=json.dumps(new_page)).json()
-    return response["id"]
+    return create_page_in(DAY_NOTION, properties, "day")
 
 
-def find_page_id_by_date_and_name(data_source_id, date):
-    url = f"{DATA_SOURCE_END_POINT}{data_source_id}/query"
+def find_page_id_by_date_and_name(database_id, date):
+    url = data_source_query_url(database_id)
     query = {
         "filter": {
             "and": [
@@ -142,7 +157,7 @@ def find_page_id_by_date_and_name(data_source_id, date):
 
 
 def update_page_in_day(name, date, wordle=None, globle=None, echo_chess=None, connections_score=None, connections_tries=None):
-    page_id = find_page_id_by_date_and_name(DAY_DATA_SOURCE_ID, date)
+    page_id = find_page_id_by_date_and_name(DAY_NOTION, date)
     if not page_id:
         print(f"No page found for date: {date}")
         page_id = add_page_to_day(date)
@@ -169,11 +184,6 @@ def update_page_in_day(name, date, wordle=None, globle=None, echo_chess=None, co
     return response
 
 
-SCORES_DATA_SOURCE_ID = get_data_source_id(SCORES_NOTION)
-DAILY_WINNERS_DATA_SOURCE_ID = get_data_source_id(DAILY_WINNERS_NOTION)
-WEEKLY_WINNERS_DATA_SOURCE_ID = get_data_source_id(WEEKLY_WINNERS_NOTION)
-MOVIE_DATA_SOURCE_ID = get_data_source_id(MOVIES_NOTION)
-DAY_DATA_SOURCE_ID = get_data_source_id(DAY_NOTION)
 
 # ----- MONGODB UTILITIES -----
 
