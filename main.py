@@ -12,6 +12,101 @@ from utils.movie_utils import *
 pending = {}
 games = ["globle", "connections", "echo_chess", "wordle"]
 
+# A score change has to be confirmed by the other player, so this state is keyed by
+# the chat instead of (chat, user, thread): the answer comes from a different account
+# than the one that asked for it. Mirrors /modify in the worker.
+modify_pending = {}
+modify_ttl = 1800
+game_labels = {"globle": "Globle", "wordle": "Wordle", "echo_chess": "Echo Chess", "connections": "Connections"}
+bound_ids = {}   # telegram account id per player name, learnt the first time they speak
+
+
+def is_player(user_name):
+    return user_name in (player_1, player_2)
+
+
+def other_player(user_name):
+    return player_2 if user_name == player_1 else player_1
+
+
+def score_text(game, score, tries):
+    return f"{score} ({tries} tries)" if game == "connections" else str(score)
+
+
+def parse_modify_spec(text):
+    parts = str(text or "").strip().lower().split()
+    if not parts:
+        return None
+    game = parts.pop(0)
+    if game == "echo" and parts and parts[0] == "chess":
+        parts.pop(0)
+        game = "echo_chess"
+    if game == "echochess":
+        game = "echo_chess"
+    if game not in games:
+        return None
+    nums = [int(p) for p in parts if p.isdigit()]
+    date = next((p for p in parts if len(p.split("-")) == 3 and len(p) == 10 and p.replace("-", "").isdigit()), None)
+    if game == "connections":
+        if len(nums) < 2:
+            return None
+        score, tries = nums[0], nums[1]
+        if score < 0 or score > 4 or tries < 0 or tries > 200:
+            return None
+        return {"game": game, "score": score, "tries": tries, "date": date}
+    if not nums:
+        return None
+    if nums[0] < 0 or nums[0] > 999:
+        return None
+    return {"game": game, "score": nums[0], "tries": None, "date": date}
+
+
+def modify_spec_prompt(user_name):
+    return (f"{user_name}, what should it be? Reply with the game and the score — \"globle 3\", \"wordle 4\", "
+            f"\"echo chess 5\", or \"connections 4 6\". Add a date as dd-mm-yyyy to change another day.")
+
+
+def describe_stored(date, name, game):
+    value = get_score(date, name, game)
+    if not value:
+        return "nothing recorded"
+    if game == "connections":
+        s = list(map(int, value))
+        return score_text(game, s[0], s[1])
+    return str(int(value))
+
+
+def apply_modify(st, chat_id, message_thread_id, message_id, confirmed_by):
+    """Write the new value to mongo and to Notion (score page + day page), then say so."""
+    user_name = st["by"]
+    game, score, tries, date, before = st["game"], st["score"], st["tries"], st["date"], st["before"]
+    label = game_labels.get(game, game)
+    notion_date = datetime.strptime(date, date_format).strftime(notion_date_format)
+    stored = [score, tries] if game == "connections" else score
+
+    if not if_exists(scores, date, user_name, game):
+        page_id = add_page_to_scores(notion_date, user_name, game, score, tries)
+        insert_record({"name": user_name, "game": game, "score": stored, "date": date, "page_id": page_id}, scores)
+    else:
+        page_id = get_page_id(scores, date, user_name, game)
+        update_record(scores, date, user_name, stored, game)
+        update_page_in_scores(page_id, score, tries)
+
+    if game == "connections":
+        update_page_in_day(user_name, notion_date, connections_score=score, connections_tries=tries)
+    elif game == "wordle":
+        update_page_in_day(user_name, notion_date, wordle=score)
+    elif game == "globle":
+        update_page_in_day(user_name, notion_date, globle=score)
+    else:
+        update_page_in_day(user_name, notion_date, echo_chess=score)
+
+    to = score_text(game, score, tries)
+    was = f" (was {before})" if before and before != to else ""
+    send_message(chat_id, f"{user_name}'s {label} score for {date} is now {to}{was} — confirmed by {confirmed_by}",
+                 message_thread_id=message_thread_id, reply_to_message_id=message_id)
+
+
 # ----- TELEGRAM UTILITIES -----
 
 def get_updates(offset=None, timeout=20):
@@ -299,6 +394,75 @@ def update_handler(update):
     user_id = update["message"]["from"]["id"]
     message_id = update["message"]["message_id"]
     user_name = update["message"]["from"].get("first_name", "User")
+
+    # --- /modify: a score change needs the other player's ok -------------------
+    # Keyed by the chat, because the confirmation comes from the other account.
+    mkey = (chat_id, message_thread_id)
+    if mkey in modify_pending and modify_pending[mkey].get("expiry", 0) < time.time():
+        del modify_pending[mkey]
+    if mkey in modify_pending and message_text and message_text.strip().startswith("/"):
+        # a new command abandons the half-finished change rather than leaving it armed
+        del modify_pending[mkey]
+
+    if is_player(user_name) and user_name not in bound_ids:
+        bound_ids[user_name] = user_id
+    if mkey in modify_pending:
+        st = modify_pending[mkey]
+        if st["stage"] == "spec":
+            if user_name != st["by"]:
+                send_message(chat_id, f"Waiting on {st['by']} to say what the score should be.",
+                             message_thread_id=message_thread_id)
+                return
+            spec = parse_modify_spec(message_text)
+            if not spec:
+                send_message(chat_id, "Could not read that. " + modify_spec_prompt(user_name),
+                             message_thread_id=message_thread_id,
+                             reply_to_message_id=message_id, force_reply=True)
+                return
+            date = spec["date"] or get_player_date_now(user_name)
+            st.update({
+                "stage": "confirm", "game": spec["game"], "score": spec["score"],
+                "tries": spec["tries"], "date": date,
+                "before": describe_stored(date, user_name, spec["game"]),
+                "expiry": time.time() + modify_ttl,
+            })
+            label = game_labels.get(spec["game"], spec["game"])
+            to = score_text(spec["game"], spec["score"], spec["tries"])
+            send_message(chat_id,
+                         f"{other_player(st['by'])}, please confirm: {st['by']} wants to change their {label} "
+                         f"score for {date} from {st['before']} to {to}. Reply Yes or No.",
+                         message_thread_id=message_thread_id)
+            return
+
+        # stage == "confirm": only the other player's own account can answer
+        confirmer = other_player(st["by"])
+        reply = (message_text or "").strip().lower()
+        if user_name != confirmer:
+            if user_name == st["by"]:
+                send_message(chat_id, f"Waiting on {confirmer} to confirm this one.",
+                             message_thread_id=message_thread_id)
+            return
+        if bound_ids.get(confirmer) not in (None, user_id):
+            send_message(chat_id, f"Only {confirmer}'s own Telegram account can confirm this.",
+                         message_thread_id=message_thread_id)
+            return
+        if reply in ("yes", "y", "confirm"):
+            try:
+                apply_modify(st, chat_id, message_thread_id, message_id, confirmer)
+                del modify_pending[mkey]
+            except Exception as e:
+                print(f"[modify] apply failed: {type(e).__name__}: {e}")
+                traceback.print_exc()
+                # keep it armed: the change failed, not the answer
+                send_message(chat_id, "Could not save that change (server side issue). Please try again in a minute.",
+                             message_thread_id=message_thread_id)
+            return
+        if reply in ("no", "n", "cancel"):
+            del modify_pending[mkey]
+            send_message(chat_id, f"No change made — {confirmer} declined.", message_thread_id=message_thread_id)
+            return
+        send_message(chat_id, f"Reply Yes or No, {confirmer}.", message_thread_id=message_thread_id)
+        return
 
     key = (chat_id, user_id, message_thread_id)
     if key in pending:
@@ -641,6 +805,22 @@ def update_handler(update):
         }
         return
     
+    if message_text == "/modify@silverlining12bot":
+        if not is_player(user_name):
+            send_message(chat_id, f"Only {player_1} and {player_2} can change scores.",
+                         message_thread_id=message_thread_id)
+            return
+        res = send_message(chat_id, modify_spec_prompt(user_name),
+                           message_thread_id=message_thread_id,
+                           reply_to_message_id=message_id, force_reply=True)
+        modify_pending[(chat_id, message_thread_id)] = {
+            "stage": "spec",
+            "by": user_name,
+            "prompt_id": res["message_id"],
+            "expiry": time.time() + modify_ttl,
+        }
+        return
+
     if message_text == "/checkwordle@silverlining12bot":
         check_date = get_player_date_now(user_name)
         score = get_score(check_date, user_name, "wordle")
